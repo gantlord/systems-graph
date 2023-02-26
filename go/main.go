@@ -1,5 +1,7 @@
 package main
 
+import "test/utilities"
+
 import (
 	"context"
 	"fmt"
@@ -59,6 +61,9 @@ func main() {
 			}
 			fmt.Printf("%v\n", doc)
 		}
+
 	}
+	name := utilities.GetRandomName()
+	fmt.Printf("%s\n", name)
 }
 
