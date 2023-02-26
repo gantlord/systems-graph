@@ -8,4 +8,4 @@ CONTAINER=`sudo docker ps | awk '{print $1}' | tail -n 1`
 sudo docker cp data $CONTAINER:/tmp
 sudo docker exec -it $CONTAINER arangorestore --server.authentication false /tmp/data/db
 sudo docker ps
-
+scripts/setup_go.sh
