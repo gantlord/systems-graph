@@ -29,7 +29,7 @@ func main() {
 	}
 
 	// Retrieve the collections you want to print documents from
-	collectionNames := []string{"binaries", "firewallRules", "nodes", "edges", "pods", "components", "people", "purposes"}
+	collectionNames := []string{"binaries", "firewallRules", "physicalServers", "edges", "abstractServers", "components", "people", "purposes"}
 
 	// Iterate over the collections and print out all documents in each collection
 	for _, collName := range collectionNames {
