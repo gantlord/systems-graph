@@ -1,14 +1,15 @@
 package main
 
-import "test/utilities"
-
 import (
 	"context"
 	"fmt"
+	"math/rand"
 
 	driver "github.com/arangodb/go-driver"
 	http "github.com/arangodb/go-driver/http"
 )
+
+var collectionSize = 1000
 
 func main() {
 	// Set up a connection to the database
@@ -28,17 +29,31 @@ func main() {
 		panic(err)
 	}
 
+	db, err := client.Database(nil, "_system")
+
+	coll, err := db.Collection(context.Background(), "physicalServers")
+	if err != nil {
+		panic(err)
+	}
+
+	// generate random documents and insert them into the collection
+	for i := 0; i < collectionSize; i++ {
+		cores := rand.Intn(32) // generate a random number of cores between 0 and 31
+		doc := map[string]interface{}{
+			"_key":  fmt.Sprintf("opamux%d", i),
+			"cores": cores,
+		}
+		_, err := coll.CreateDocument(context.Background(), doc)
+		if err != nil {
+			//panic(err)
+		}
+	}
+
 	// Retrieve the collections you want to print documents from
-	collectionNames := []string{"binaries", "firewallRules", "physicalServers", "edges", "abstractServers", "components", "people", "purposes"}
+	collectionNames := []string{"binaries", "firewallRules", "physicalServers", "edges", "abstractServers", "components", "people", "purpose"}
 
 	// Iterate over the collections and print out all documents in each collection
 	for _, collName := range collectionNames {
-		// Retrieve the database
-		db, err := client.Database(nil, "_system")
-		if err != nil {
-			panic(err)
-		}
-
 		// Set up a query to retrieve all documents in the collection
 		ctx := context.Background()
 		query := "FOR doc IN @@collection RETURN doc"
@@ -63,7 +78,5 @@ func main() {
 		}
 
 	}
-	name := utilities.GetRandomName()
-	fmt.Printf("%s\n", name)
 }
 
