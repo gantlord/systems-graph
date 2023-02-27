@@ -17,10 +17,10 @@ type CollectionInfo struct {
 }
 
 var collections = []CollectionInfo{
-    {"binaries", 100,  func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("binary%d", i)} }},
+    {"binaries", 1000,  func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("binary%d", i)} }},
     {"firewallRules", 100,  func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("rule%d", i)} }},
-    {"abstractServers", 100,  func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("abstractServers%d", i)} }},
-    {"components", 1000,  func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("component%d", i)} }},
+    {"abstractServers", 1000,  func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("abstractServers%d", i)} }},
+    {"components", 10000,  func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("component%d", i)} }},
     {"purposes", 100,  func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("purpose%d", i)} }},
     {"people", 100,  func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("%s%d", utilities.GetRandomName(), i)} }},
     {"physicalServers", 1000,  func(i int) map[string]interface{} {
