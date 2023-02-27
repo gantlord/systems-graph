@@ -4,15 +4,17 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"test/utilities"
 
 	driver "github.com/arangodb/go-driver"
 	http "github.com/arangodb/go-driver/http"
 )
 
-var collectionSize = 1000
+var smallCollectionSize = 2
+var mediumCollectionSize = 4
+var largeCollectionSize = 6
 
 func main() {
-	// Set up a connection to the database
 	conn, err := http.NewConnection(http.ConnectionConfig{
 		Endpoints: []string{"http://localhost:8529"},
 	})
@@ -31,30 +33,131 @@ func main() {
 
 	db, err := client.Database(nil, "_system")
 
-	coll, err := db.Collection(context.Background(), "physicalServers")
+	collectionNames := []string{"binaries", "firewallRules", "physicalServers", "edges", "abstractServers", "components", "people", "purposes"}
+
+	for _, collName := range collectionNames {
+
+		if coll, err := db.Collection(nil, collName); err == nil {
+			coll.Remove(nil)
+		}
+
+		ctx := context.Background()
+		options := &driver.CreateCollectionOptions{}
+		_, err := db.CreateCollection(ctx, collName, options)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	coll, err := db.Collection(context.Background(), "binaries")
 	if err != nil {
 		panic(err)
 	}
 
-	// generate random documents and insert them into the collection
-	for i := 0; i < collectionSize; i++ {
-		cores := rand.Intn(32) // generate a random number of cores between 0 and 31
+	for i := 0; i < smallCollectionSize; i++ {
 		doc := map[string]interface{}{
-			"_key":  fmt.Sprintf("opamux%d", i),
+			"_key":  fmt.Sprintf("binary%d", i),
+		}
+		_, err := coll.CreateDocument(context.Background(), doc)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	coll, err = db.Collection(context.Background(), "firewallRules")
+	if err != nil {
+		panic(err)
+	}
+
+	for i := 0; i < smallCollectionSize; i++ {
+		doc := map[string]interface{}{
+			"_key":  fmt.Sprintf("rule%d", i),
+		}
+		_, err := coll.CreateDocument(context.Background(), doc)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	coll, err = db.Collection(context.Background(), "abstractServers")
+	if err != nil {
+		panic(err)
+	}
+
+	for i := 0; i < smallCollectionSize; i++ {
+		doc := map[string]interface{}{
+			"_key":  fmt.Sprintf("abstractServers%d", i),
+		}
+		_, err := coll.CreateDocument(context.Background(), doc)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	coll, err = db.Collection(context.Background(), "components")
+	if err != nil {
+		panic(err)
+	}
+
+	for i := 0; i < largeCollectionSize; i++ {
+		doc := map[string]interface{}{
+			"_key":  fmt.Sprintf("component%d", i),
+		}
+		_, err := coll.CreateDocument(context.Background(), doc)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	coll, err = db.Collection(context.Background(), "purposes")
+	if err != nil {
+		panic(err)
+	}
+
+	for i := 0; i < smallCollectionSize; i++ {
+		doc := map[string]interface{}{
+			"_key":  fmt.Sprintf("purpose%d", i),
+		}
+		_, err := coll.CreateDocument(context.Background(), doc)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	coll, err = db.Collection(context.Background(), "people")
+	if err != nil {
+		panic(err)
+	}
+
+	for i := 0; i < smallCollectionSize; i++ {
+		doc := map[string]interface{}{
+			"_key":  utilities.GetRandomName(),
+		}
+		_, err := coll.CreateDocument(context.Background(), doc)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	coll, err = db.Collection(context.Background(), "physicalServers")
+	if err != nil {
+		panic(err)
+	}
+
+	for i := 0; i < mediumCollectionSize; i++ {
+		cores := rand.Intn(32) 
+		doc := map[string]interface{}{
+			"_key":  fmt.Sprintf("server%d", i),
 			"cores": cores,
 		}
 		_, err := coll.CreateDocument(context.Background(), doc)
 		if err != nil {
-			//panic(err)
+			panic(err)
 		}
 	}
 
-	// Retrieve the collections you want to print documents from
-	collectionNames := []string{"binaries", "firewallRules", "physicalServers", "edges", "abstractServers", "components", "people", "purpose"}
 
-	// Iterate over the collections and print out all documents in each collection
 	for _, collName := range collectionNames {
-		// Set up a query to retrieve all documents in the collection
 		ctx := context.Background()
 		query := "FOR doc IN @@collection RETURN doc"
 		bindVars := map[string]interface{}{
@@ -65,7 +168,6 @@ func main() {
 			panic(err)
 		}
 
-		// Iterate over the cursor and print out each document
 		var doc interface{}
 		for {
 			_, err := cursor.ReadDocument(ctx, &doc)

@@ -12,6 +12,6 @@ var lastNames = []string{"Smith", "Johnson", "Brown", "Davis", "Wilson", "Kim", 
 func GetRandomName() string {
     firstName := firstNames[rand.Intn(len(firstNames))]
     lastName := lastNames[rand.Intn(len(lastNames))]
-    return fmt.Sprintf("%s %s", firstName, lastName)
+    return fmt.Sprintf("%s%s", firstName, lastName)
 }
 
