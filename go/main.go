@@ -10,9 +10,9 @@ import (
 	http "github.com/arangodb/go-driver/http"
 )
 
-var smallCollectionSize = 2
-var mediumCollectionSize = 4
-var largeCollectionSize = 6
+var smallCollectionSize = 100
+var mediumCollectionSize = smallCollectionSize * 10
+var largeCollectionSize = mediumCollectionSize * 10
 
 func main() {
 	conn, err := http.NewConnection(http.ConnectionConfig{
@@ -131,7 +131,7 @@ func main() {
 
 	for i := 0; i < smallCollectionSize; i++ {
 		doc := map[string]interface{}{
-			"_key":  utilities.GetRandomName(),
+			"_key": fmt.Sprintf("%s%d", utilities.GetRandomName(), i),
 		}
 		_, err := coll.CreateDocument(context.Background(), doc)
 		if err != nil {
@@ -159,25 +159,17 @@ func main() {
 
 	for _, collName := range collectionNames {
 		ctx := context.Background()
-		query := "FOR doc IN @@collection RETURN doc"
-		bindVars := map[string]interface{}{
-			"@collection": collName,
-		}
-		cursor, err := db.Query(ctx, query, bindVars)
+		collection, err := db.Collection(ctx, collName)
 		if err != nil {
-			panic(err)
+		    panic(err)
 		}
 
-		var doc interface{}
-		for {
-			_, err := cursor.ReadDocument(ctx, &doc)
-			if driver.IsNoMoreDocuments(err) {
-				break
-			} else if err != nil {
-				panic(err)
-			}
-			fmt.Printf("%v\n", doc)
+		count, err := collection.Count(ctx)
+		if err != nil {
+		    panic(err)
 		}
+
+		fmt.Printf("The number of documents in %s is %d\n", collName, count)
 
 	}
 }
