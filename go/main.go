@@ -13,18 +13,17 @@ import (
 type CollectionInfo struct {
     Name     string
     Size     int
-    KeyGenFn func(i int) string
     DocGenFn func(i int) map[string]interface{}
 }
 
 var collections = []CollectionInfo{
-    {"binaries", 100, func(i int) string { return fmt.Sprintf("binary%d", i) }, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("binary%d", i)} }},
-    {"firewallRules", 100, func(i int) string { return fmt.Sprintf("rule%d", i) }, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("rule%d", i)} }},
-    {"abstractServers", 100, func(i int) string { return fmt.Sprintf("abstractServers%d", i) }, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("abstractServers%d", i)} }},
-    {"components", 1000, func(i int) string { return fmt.Sprintf("component%d", i) }, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("component%d", i)} }},
-    {"purposes", 100, func(i int) string { return fmt.Sprintf("purpose%d", i) }, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("purpose%d", i)} }},
-    {"people", 100, func(i int) string { return fmt.Sprintf("%s%d", utilities.GetRandomName(), i) }, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("%s%d", utilities.GetRandomName(), i)} }},
-    {"physicalServers", 1000, func(i int) string { return fmt.Sprintf("server%d", i) }, func(i int) map[string]interface{} {
+    {"binaries", 100,  func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("binary%d", i)} }},
+    {"firewallRules", 100,  func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("rule%d", i)} }},
+    {"abstractServers", 100,  func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("abstractServers%d", i)} }},
+    {"components", 1000,  func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("component%d", i)} }},
+    {"purposes", 100,  func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("purpose%d", i)} }},
+    {"people", 100,  func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("%s%d", utilities.GetRandomName(), i)} }},
+    {"physicalServers", 1000,  func(i int) map[string]interface{} {
         cores := rand.Intn(32)
         return map[string]interface{}{"_key": fmt.Sprintf("server%d", i), "cores": cores}
     }},
