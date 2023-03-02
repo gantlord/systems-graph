@@ -1,6 +1,6 @@
-sudo yum -y install go;
-cd go; 
-go mod init test
+sudo yum -y install go
+cd cmd/systems-graph
+go mod init systems-graph
 go get github.com/arangodb/go-driver
 go build
-./test
+./systems-graph
