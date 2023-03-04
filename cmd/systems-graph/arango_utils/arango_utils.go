@@ -13,6 +13,8 @@ const medium = 10 * small
 const large = 10 * medium
 const ConnectionPct = 50
 
+var AuditsAllSucceeded = true
+
 type CollectionInfo struct {
 	Name     string
 	Size     int
@@ -42,19 +44,8 @@ var firstNames = []string{"Alice", "Bob", "Charlie", "David", "Eve", "Frank", "G
 var lastNames = []string{"Smith", "Johnson", "Brown", "Davis", "Wilson", "Kim", "Schmidt", "Petrov", "Rodriguez", "Garcia", "Gonzalez", "Martinez", "Hernandez", "Lopez", "Perez", "Jackson", "Taylor", "Lee", "Nguyen", "Chen", "Wang", "Singh", "Kim", "Gupta", "Kumar"}
 
 
-func GetSubgraphCount(components []string, db driver.Database) int {
-	var visitedNodes = make(map[string]bool)
-	var subgraphCount int
-	for _, node := range components {
-		if !visitedNodes[node] {
-			subgraphCount++
-			dfs(db, "edges", node, visitedNodes)
-		}
-	}
-	return subgraphCount
-}
 
-func AttemptEdgeCreation(db driver.Database, from string, to string, edgeColl driver.Collection) {
+func CreateEdge(db driver.Database, from string, to string, edgeColl driver.Collection) {
 	if !createsCycle(db, "edges", from, to) {
 
 		edge := map[string]interface{}{
@@ -70,7 +61,7 @@ func AttemptEdgeCreation(db driver.Database, from string, to string, edgeColl dr
 
 func GetCollectionIDsAsString(db driver.Database, collection string) []string {
 	var collectionIDs []string
-	query := fmt.Sprintf("FOR node IN %s RETURN node._id", collection)
+	query := fmt.Sprintf("FOR vertex IN %s RETURN vertex._id", collection)
 	cursor, err := db.Query(context.Background(), query, nil)
 	if err != nil {
 		panic(err)
@@ -175,36 +166,36 @@ func CreateConnection() driver.Connection {
 	return conn
 }
 
-func dfs(db driver.Database, edgeCollName string, node string, visitedNodes map[string]bool) {
-	visitedNodes[node] = true
-	query := fmt.Sprintf("FOR v, e IN ANY '%s' %s RETURN v._id", node, edgeCollName)
+func depthFirstSearch(db driver.Database, edgeCollName string, vertex string, visitedVertices map[string]bool) {
+	visitedVertices[vertex] = true
+	query := fmt.Sprintf("FOR v, e IN ANY '%s' %s RETURN v._id", vertex, edgeCollName)
 	cursor, err := db.Query(context.Background(), query, nil)
 	if err != nil {
 		panic(err)
 	}
 	defer cursor.Close()
 	for {
-		var neighbor string
-		_, err := cursor.ReadDocument(context.Background(), &neighbor)
+		var neighbour string
+		_, err := cursor.ReadDocument(context.Background(), &neighbour)
 		if driver.IsNoMoreDocuments(err) {
 			break
 		} else if err != nil {
 			panic(err)
 		}
-		if !visitedNodes[neighbor] {
-			dfs(db, edgeCollName, neighbor, visitedNodes)
+		if !visitedVertices[neighbour] {
+			depthFirstSearch(db, edgeCollName, neighbour, visitedVertices)
 		}
 	}
 }
 
-func createsCycle(db driver.Database, edgeCollName string, fromNode string, toNode string) bool {
-	visitedNodes := make(map[string]bool)
-	visitedNodes[fromNode] = true
+func createsCycle(db driver.Database, edgeCollName string, fromVertex string, toVertex string) bool {
+	visitedVertices := make(map[string]bool)
+	visitedVertices[fromVertex] = true
 	query := fmt.Sprintf(`
 		FOR v, e IN ANY '%s' %s
 			FILTER e._to == '%s'
 			RETURN v._id
-	`, fromNode, edgeCollName, toNode)
+	`, fromVertex, edgeCollName, toVertex)
 	cursor, err := db.Query(context.Background(), query, nil)
 	if err != nil {
 		panic(err)
@@ -229,15 +220,15 @@ func CheckVertexHasOutgoingEdgeToCollection(db driver.Database, vertex string, e
 
         hasOutgoingEdge := false
         for {
-            var neighbor string
-            _, err := cursor.ReadDocument(context.Background(), &neighbor)
+            var neighbour string
+            _, err := cursor.ReadDocument(context.Background(), &neighbour)
             if driver.IsNoMoreDocuments(err) {
                 break
             } else if err != nil {
                 panic(err)
             }
             for _, c := range collection {
-                if neighbor == c {
+                if neighbour == c {
                     hasOutgoingEdge = true
                     break
                 }
@@ -249,7 +240,91 @@ func CheckVertexHasOutgoingEdgeToCollection(db driver.Database, vertex string, e
         return hasOutgoingEdge
 }
 
-func CheckComponentsConnectToComponentOrPod(db driver.Database) {
+func AuditCollectionIsFullyConnected(collInfo CollectionInfo, db driver.Database){
+	collectionIDs := GetCollectionIDsAsString(db, collInfo.Name)
+	subgraphCount := GetSubgraphCount(collectionIDs, db)
+
+	if subgraphCount == 1 {
+            fmt.Printf("SUCCESS: collection %s is fully connected for %d vertices\n", collInfo.Name, collInfo.Size)
+	} else {
+	    fmt.Printf("FAILURE: collection %s has %d subgraphs for %d vertices\n", collInfo.Name, subgraphCount, collInfo.Size)
+	    AuditsAllSucceeded = false
+	}
+}
+
+
+
+func subgraphHasConnectionToCollection(db driver.Database, edgeCollName string, vertex string, visitedVertices map[string]bool, targetCollectionName string) bool {
+	visitedVertices[vertex] = true
+        
+	targetCollectionIDs := GetCollectionIDsAsString(db, targetCollectionName)
+        targetCollectionConnectionExists := CheckVertexHasOutgoingEdgeToCollection(db, vertex, edgeCollName, targetCollectionIDs)
+
+	query := fmt.Sprintf("FOR v, e IN ANY '%s' %s RETURN v._id", vertex, edgeCollName)
+
+	cursor, err := db.Query(context.Background(), query, nil)
+	if err != nil {
+		panic(err)
+	}
+	defer cursor.Close()
+	for {
+		var neighbour string
+		_, err := cursor.ReadDocument(context.Background(), &neighbour)
+		if driver.IsNoMoreDocuments(err) {
+			break
+		} else if err != nil {
+			panic(err)
+		}
+		if !visitedVertices[neighbour] {
+                    result := subgraphHasConnectionToCollection(db, edgeCollName, neighbour, visitedVertices, targetCollectionName)
+	            targetCollectionConnectionExists = result || targetCollectionConnectionExists
+		}
+	}
+
+	return targetCollectionConnectionExists
+
+}
+
+func GetSubgraphCount(collectionIDs []string, db driver.Database) int {
+	var visitedVertices = make(map[string]bool)
+	var subgraphCount int
+	for _, vertex := range collectionIDs {
+		if !visitedVertices[vertex] {
+			subgraphCount++
+			depthFirstSearch(db, "edges", vertex, visitedVertices)
+		}
+	}
+	return subgraphCount
+}
+
+func GetSubgraphConnectionsToTargetCollectionCount(sourceCollectionIDs []string, db driver.Database, targetCollectionName string) int {
+	var visitedVertices = make(map[string]bool)
+	var subgraphConnectedCount int
+	for _, vertex := range sourceCollectionIDs {
+		if !visitedVertices[vertex] {
+			if subgraphHasConnectionToCollection(db, "edges", vertex, visitedVertices, targetCollectionName){
+				subgraphConnectedCount++
+			}
+		}
+	}
+	return subgraphConnectedCount
+}
+
+func AuditCollectionSubgraphsConnectToCollection(db driver.Database, sourceCollectionName string, targetCollectionName string) {
+    
+    sourceCollectionIDs := GetCollectionIDsAsString(db, sourceCollectionName)
+    subgraphConnectionsCount := GetSubgraphConnectionsToTargetCollectionCount(sourceCollectionIDs, db, targetCollectionName)
+    subgraphCount := GetSubgraphCount(sourceCollectionIDs, db)
+
+    if subgraphConnectionsCount!=subgraphCount {
+        fmt.Printf("FAILURE: %d/%d subgraphs in source collection %s have an outgoing edge to collection %s\n", subgraphConnectionsCount, subgraphCount, sourceCollectionName, targetCollectionName) 
+	AuditsAllSucceeded = false
+    } else {
+        fmt.Printf("SUCCESS: %d/%d subgraphs in source collection %s have an outgoing edge to target collection %s\n", subgraphConnectionsCount, subgraphCount, sourceCollectionName, targetCollectionName) 
+    }
+}
+
+func AuditComponentsConnectToComponentOrPod(db driver.Database) {
     components := GetCollectionIDsAsString(db, "components")
     pods := GetCollectionIDsAsString(db, "pods")
     edgeCollName := "edges"
@@ -260,13 +335,13 @@ func CheckComponentsConnectToComponentOrPod(db driver.Database) {
 	hasOutgoingEdgePods := CheckVertexHasOutgoingEdgeToCollection(db, component, edgeCollName, pods)
         if !hasOutgoingEdgeComponents && !hasOutgoingEdgePods{
 	    numFailures++	
-            //fmt.Printf("Error: Component %s does not have an outgoing edge to another component or a pod\n", component)
         }
     }
     if numFailures!=0 {
-        fmt.Printf("FAILURE: %d component(s) do(es) not have an outgoing edge to another component or a pod\n", numFailures) 
+        fmt.Printf("FAILURE: %d/%d component(s) do(es) not have an outgoing edge to another component or a pod\n", numFailures, len(components)) 
+	AuditsAllSucceeded = false
     } else {
-        fmt.Println("SUCCESS: all components have an outgoing edge to another component or a pod") 
+        fmt.Printf("SUCCESS: %d/%d components have an outgoing edge to another component or a pod\n", len(components)-numFailures, len(components)) 
     }
 }
 
