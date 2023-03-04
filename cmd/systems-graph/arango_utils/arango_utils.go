@@ -54,7 +54,7 @@ func GetSubgraphCount(components []string, db driver.Database) int {
 	return subgraphCount
 }
 
-func AttemptEdgeCreation(db driver.Database, from string, to string, edgeColl driver.Collection) {
+func CreateEdge(db driver.Database, from string, to string, edgeColl driver.Collection) {
 	if !createsCycle(db, "edges", from, to) {
 
 		edge := map[string]interface{}{
