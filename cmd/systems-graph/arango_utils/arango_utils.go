@@ -48,7 +48,7 @@ func GetSubgraphCount(components []string, db driver.Database) int {
 	for _, node := range components {
 		if !visitedNodes[node] {
 			subgraphCount++
-			dfs(db, "edges", node, visitedNodes)
+			depthFirstSearch(db, "edges", node, visitedNodes)
 		}
 	}
 	return subgraphCount
@@ -175,7 +175,7 @@ func CreateConnection() driver.Connection {
 	return conn
 }
 
-func dfs(db driver.Database, edgeCollName string, node string, visitedNodes map[string]bool) {
+func depthFirstSearch(db driver.Database, edgeCollName string, node string, visitedNodes map[string]bool) {
 	visitedNodes[node] = true
 	query := fmt.Sprintf("FOR v, e IN ANY '%s' %s RETURN v._id", node, edgeCollName)
 	cursor, err := db.Query(context.Background(), query, nil)
@@ -192,7 +192,7 @@ func dfs(db driver.Database, edgeCollName string, node string, visitedNodes map[
 			panic(err)
 		}
 		if !visitedNodes[neighbor] {
-			dfs(db, edgeCollName, neighbor, visitedNodes)
+			depthFirstSearch(db, edgeCollName, neighbor, visitedNodes)
 		}
 	}
 }
@@ -249,7 +249,18 @@ func CheckVertexHasOutgoingEdgeToCollection(db driver.Database, vertex string, e
         return hasOutgoingEdge
 }
 
-func CheckComponentsConnectToComponentOrPod(db driver.Database) {
+func AuditCollectionIsFullyConnected(collInfo CollectionInfo, db driver.Database){
+	collectionIDs := GetCollectionIDsAsString(db, collInfo.Name)
+	subgraphCount := GetSubgraphCount(collectionIDs, db)
+
+	if subgraphCount == 1 {
+            fmt.Printf("SUCCESS: collection %s is fully connected for %d vertices\n", collInfo.Name, collInfo.Size)
+	} else {
+	    fmt.Printf("FAILURE: collection %s has %d subgraphs for %d vertices\n", collInfo.Name, subgraphCount, collInfo.Size)
+	}
+}
+
+func AuditComponentsConnectToComponentOrPod(db driver.Database) {
     components := GetCollectionIDsAsString(db, "components")
     pods := GetCollectionIDsAsString(db, "pods")
     edgeCollName := "edges"
@@ -260,7 +271,6 @@ func CheckComponentsConnectToComponentOrPod(db driver.Database) {
 	hasOutgoingEdgePods := CheckVertexHasOutgoingEdgeToCollection(db, component, edgeCollName, pods)
         if !hasOutgoingEdgeComponents && !hasOutgoingEdgePods{
 	    numFailures++	
-            //fmt.Printf("Error: Component %s does not have an outgoing edge to another component or a pod\n", component)
         }
     }
     if numFailures!=0 {

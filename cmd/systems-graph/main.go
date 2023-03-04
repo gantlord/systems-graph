@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"math/rand"
 	"systems-graph/arango_utils"
 
@@ -16,9 +15,7 @@ func main() {
 	db := arango_utils.GetDB(client)
 
 	for _, collInfo := range arango_utils.Collections {
-		ctx := arango_utils.CreateCollectionFromInfo(db, collInfo)
-		count := arango_utils.GetDocumentCount(db, ctx, collInfo)
-		fmt.Printf("The number of documents in %s is %d\n", collInfo.Name, count)
+		arango_utils.CreateCollectionFromInfo(db, collInfo)
 	}
 
 	edgeColl := arango_utils.CreateEdgeCollection(db, "edges")
@@ -32,10 +29,8 @@ func main() {
 				if i == j {
 					continue
 				}
-				//fmt.Println("creating component to component edge")
 				arango_utils.AttemptEdgeCreation(db, components[i], components[j], edgeColl)
 			} else {
-				//fmt.Println("creating component to pod edge")
 				arango_utils.AttemptEdgeCreation(db, components[i], pods[rand.Intn(len(pods))], edgeColl)
 				break
 			}
@@ -43,8 +38,11 @@ func main() {
 
 	}
 
-	subgraphCount := arango_utils.GetSubgraphCount(components, db)
-	fmt.Printf("Number of subgraphs: %d\n", subgraphCount)
-	arango_utils.CheckComponentsConnectToComponentOrPod(db)
+	for _, collInfo := range arango_utils.Collections {
+	    arango_utils.AuditCollectionIsFullyConnected(collInfo, db)
+	}
+
+	arango_utils.AuditComponentsConnectToComponentOrPod(db)
+
 }
 
