@@ -66,7 +66,7 @@ func main() {
 	}
 
 	arango_utils.AuditComponentsConnectToComponentOrPod(db)
-	//arango_utils.AuditSubgraphConnectsToCollection(db, "components", "pods")TODO
+	arango_utils.AuditCollectionSubgraphsConnectToCollection(db, "components", "pods")
 	arango_utils.AuditCollectionSubgraphsConnectToCollection(db, "components", "purposes")
 
 	if (arango_utils.AuditsAllSucceeded){

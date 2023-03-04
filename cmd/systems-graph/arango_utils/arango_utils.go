@@ -258,7 +258,7 @@ func subgraphHasConnectionToCollection(db driver.Database, edgeCollName string, 
 	visitedVertices[vertex] = true
         
 	targetCollectionIDs := GetCollectionIDsAsString(db, targetCollectionName)
-	targetCollectionConnectionExists := CheckVertexHasOutgoingEdgeToCollection(db, vertex, edgeCollName, targetCollectionIDs)
+        targetCollectionConnectionExists := CheckVertexHasOutgoingEdgeToCollection(db, vertex, edgeCollName, targetCollectionIDs)
 
 	query := fmt.Sprintf("FOR v, e IN ANY '%s' %s RETURN v._id", vertex, edgeCollName)
 
@@ -276,7 +276,8 @@ func subgraphHasConnectionToCollection(db driver.Database, edgeCollName string, 
 			panic(err)
 		}
 		if !visitedVertices[neighbour] {
-			targetCollectionConnectionExists = targetCollectionConnectionExists ||  subgraphHasConnectionToCollection(db, edgeCollName, neighbour, visitedVertices, targetCollectionName)
+                    result := subgraphHasConnectionToCollection(db, edgeCollName, neighbour, visitedVertices, targetCollectionName)
+	            targetCollectionConnectionExists = result || targetCollectionConnectionExists
 		}
 	}
 
@@ -316,7 +317,7 @@ func AuditCollectionSubgraphsConnectToCollection(db driver.Database, sourceColle
     subgraphCount := GetSubgraphCount(sourceCollectionIDs, db)
 
     if subgraphConnectionsCount!=subgraphCount {
-        fmt.Printf("FAILURE: %d/%d subgraphs in source collection %s do not have an outgoing edge to collection %s\n", subgraphConnectionsCount, subgraphCount, sourceCollectionName, targetCollectionName) 
+        fmt.Printf("FAILURE: %d/%d subgraphs in source collection %s have an outgoing edge to collection %s\n", subgraphConnectionsCount, subgraphCount, sourceCollectionName, targetCollectionName) 
 	AuditsAllSucceeded = false
     } else {
         fmt.Printf("SUCCESS: %d/%d subgraphs in source collection %s have an outgoing edge to target collection %s\n", subgraphConnectionsCount, subgraphCount, sourceCollectionName, targetCollectionName) 
