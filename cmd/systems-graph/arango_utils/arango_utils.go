@@ -222,6 +222,7 @@ func GetRandomName() string {
 func CheckGraph(db driver.Database) {
     components := GetComponents(db)
     edgeCollName := "edges"
+    numFailures := 0	
 
     for _, component := range components {
         query := fmt.Sprintf("FOR v, e IN OUTBOUND '%s' %s RETURN v._id", component, edgeCollName)
@@ -255,7 +256,13 @@ func CheckGraph(db driver.Database) {
             }
         }
         if !hasOutgoingEdge {
-            fmt.Printf("Error: Component %s does not have an outgoing edge to another component or an abstract server\n", component)
+	    numFailures++	
+            //fmt.Printf("Error: Component %s does not have an outgoing edge to another component or an abstract server\n", component)
         }
+    }
+    if numFailures!=0 {
+        fmt.Printf("FAILURE: %d component(s) do(es) not have an outgoing edge to another component or an abstract server\n", numFailures) 
+    } else {
+        fmt.Println("SUCCESS: all components have an outgoing edge to another component or an abstract server") 
     }
 }
