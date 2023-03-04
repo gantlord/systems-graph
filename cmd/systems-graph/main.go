@@ -1,12 +1,12 @@
 package main
 
 import (
-	"context"
 	"fmt"
-
-	//"github.com/gantlord/systems-graph/arango_utils"
+	"math/rand"
 	"systems-graph/arango_utils"
+
 )
+
 
 func main() {
 	rand.New(rand.NewSource(0))
@@ -41,5 +41,6 @@ func main() {
 
 	subgraphCount := arango_utils.GetSubgraphCount(components, db)
 	fmt.Printf("Number of subgraphs: %d\n", subgraphCount)
+        arango_utils.CheckGraph(db)
 }
 

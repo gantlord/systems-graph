@@ -2,10 +2,16 @@ package arango_utils
 
 import (
 	"context"
-
+	"fmt"
+	"math/rand"
 	driver "github.com/arangodb/go-driver"
 	http "github.com/arangodb/go-driver/http"
 )
+
+const small = 10
+const medium = 10 * small
+const large = 10 * medium
+const ConnectionPct = 50
 
 type CollectionInfo struct {
 	Name     string
@@ -13,7 +19,7 @@ type CollectionInfo struct {
 	DocGenFn func(i int) map[string]interface{}
 }
 
-var collections = []CollectionInfo{
+var Collections = []CollectionInfo{
 	{"binaries", medium, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("binary%d", i)} }},
 	{"firewallRules", small, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("rule%d", i)} }},
 	{"abstractServers", medium, func(i int) map[string]interface{} {
@@ -36,7 +42,7 @@ var firstNames = []string{"Alice", "Bob", "Charlie", "David", "Eve", "Frank", "G
 var lastNames = []string{"Smith", "Johnson", "Brown", "Davis", "Wilson", "Kim", "Schmidt", "Petrov", "Rodriguez", "Garcia", "Gonzalez", "Martinez", "Hernandez", "Lopez", "Perez", "Jackson", "Taylor", "Lee", "Nguyen", "Chen", "Wang", "Singh", "Kim", "Gupta", "Kumar"}
 
 
-func getSubgraphCount(components []string, db driver.Database) int {
+func GetSubgraphCount(components []string, db driver.Database) int {
 	var visitedNodes = make(map[string]bool)
 	var subgraphCount int
 	for _, node := range components {
@@ -48,7 +54,7 @@ func getSubgraphCount(components []string, db driver.Database) int {
 	return subgraphCount
 }
 
-func attemptEdgeCreation(db driver.Database, components []string, i int, j int, edgeColl driver.Collection) {
+func AttemptEdgeCreation(db driver.Database, components []string, i int, j int, edgeColl driver.Collection) {
 	if !createsCycle(db, "edges", components[i], components[j]) {
 
 		edge := map[string]interface{}{
@@ -62,7 +68,7 @@ func attemptEdgeCreation(db driver.Database, components []string, i int, j int, 
 	}
 }
 
-func getComponents(db driver.Database) []string {
+func GetComponents(db driver.Database) []string {
 	var components []string
 	query := fmt.Sprintf("FOR node IN %s RETURN node._id", "components")
 	cursor, err := db.Query(context.Background(), query, nil)
@@ -87,7 +93,7 @@ func getComponents(db driver.Database) []string {
 	return components
 }
 
-func createEdgeCollection(db driver.Database, edgeCollName string) driver.Collection {
+func CreateEdgeCollection(db driver.Database, edgeCollName string) driver.Collection {
 	if edgeColl, err := db.Collection(context.TODO(), edgeCollName); err == nil {
 		edgeColl.Remove(context.TODO())
 	}
@@ -101,7 +107,7 @@ func createEdgeCollection(db driver.Database, edgeCollName string) driver.Collec
 	return edgeColl
 }
 
-func getDocumentCount(db driver.Database, ctx context.Context, collInfo CollectionInfo) int64 {
+func GetDocumentCount(db driver.Database, ctx context.Context, collInfo CollectionInfo) int64 {
 	collection, err := db.Collection(ctx, collInfo.Name)
 	if err != nil {
 		panic(err)
@@ -113,7 +119,7 @@ func getDocumentCount(db driver.Database, ctx context.Context, collInfo Collecti
 	return count
 }
 
-func createCollectionFromInfo(db driver.Database, collInfo CollectionInfo) context.Context {
+func CreateCollectionFromInfo(db driver.Database, collInfo CollectionInfo) context.Context {
 	if coll, err := db.Collection(context.Background(), collInfo.Name); err == nil {
 		coll.Remove(context.TODO())
 	}
@@ -140,7 +146,7 @@ func createCollectionFromInfo(db driver.Database, collInfo CollectionInfo) conte
 	return ctx
 }
 
-func getDB(client driver.Client) driver.Database {
+func GetDB(client driver.Client) driver.Database {
 	db, err := client.Database(context.TODO(), "_system")
 	if err != nil {
 		panic(err)
@@ -148,7 +154,7 @@ func getDB(client driver.Client) driver.Database {
 	return db
 }
 
-func createClient(conn driver.Connection) driver.Client {
+func CreateClient(conn driver.Connection) driver.Client {
 	client, err := driver.NewClient(driver.ClientConfig{
 		Connection:     conn,
 		Authentication: driver.BasicAuthentication("username", "password"),
@@ -159,7 +165,7 @@ func createClient(conn driver.Connection) driver.Client {
 	return client
 }
 
-func createConnection() driver.Connection {
+func CreateConnection() driver.Connection {
 	conn, err := http.NewConnection(http.ConnectionConfig{
 		Endpoints: []string{"http://localhost:8529"},
 	})
@@ -211,4 +217,45 @@ func GetRandomName() string {
 	firstName := firstNames[rand.Intn(len(firstNames))]
 	lastName := lastNames[rand.Intn(len(lastNames))]
 	return fmt.Sprintf("%s%s", firstName, lastName)
+}
+
+func CheckGraph(db driver.Database) {
+    components := GetComponents(db)
+    edgeCollName := "edges"
+
+    for _, component := range components {
+        query := fmt.Sprintf("FOR v, e IN OUTBOUND '%s' %s RETURN v._id", component, edgeCollName)
+        cursor, err := db.Query(context.Background(), query, nil)
+        if err != nil {
+            panic(err)
+        }
+        defer cursor.Close()
+
+        hasOutgoingEdge := false
+        for {
+            var neighbor string
+            _, err := cursor.ReadDocument(context.Background(), &neighbor)
+            if driver.IsNoMoreDocuments(err) {
+                break
+            } else if err != nil {
+                panic(err)
+            }
+            if neighbor == fmt.Sprintf("abstractServers%d", 0) {
+                hasOutgoingEdge = true
+                break
+            }
+            for _, c := range components {
+                if neighbor == c {
+                    hasOutgoingEdge = true
+                    break
+                }
+            }
+            if hasOutgoingEdge {
+                break
+            }
+        }
+        if !hasOutgoingEdge {
+            fmt.Printf("Error: Component %s does not have an outgoing edge to another component or an abstract server\n", component)
+        }
+    }
 }
