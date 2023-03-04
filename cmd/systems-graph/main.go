@@ -3,7 +3,8 @@ package main
 import (
 	"math/rand"
 	"systems-graph/arango_utils"
-
+	"fmt"
+	"os"
 )
 
 
@@ -66,7 +67,15 @@ func main() {
 
 	arango_utils.AuditComponentsConnectToComponentOrPod(db)
 	//arango_utils.AuditSubgraphConnectsToCollection(db, "components", "pods")TODO
-	//arango_utils.AuditSubgraphConnectsToCollection(db, "components", "purposes")TODO
+	arango_utils.AuditCollectionSubgraphsConnectToCollection(db, "components", "purposes")
+
+	if (arango_utils.AuditsAllSucceeded){
+	    fmt.Println("\nAll audits completed successfully!")
+	    os.Exit(0)
+	} else {
+	    fmt.Println("\nAudits failed")
+	    os.Exit(1)
+ 	}
 
 }
 
