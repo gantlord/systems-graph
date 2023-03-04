@@ -22,7 +22,8 @@ func main() {
 	}
 
 	edgeColl := arango_utils.CreateEdgeCollection(db, "edges")
-	components := arango_utils.GetComponents(db)
+	components := arango_utils.GetCollectionIDsAsString(db, "components")
+	pods := arango_utils.GetCollectionIDsAsString(db, "pods")
 
 	for i := range components {
 		for {
@@ -31,8 +32,11 @@ func main() {
 				if i == j {
 					continue
 				}
-				arango_utils.AttemptEdgeCreation(db, components, i, j, edgeColl)
+				//fmt.Println("creating component to component edge")
+				arango_utils.AttemptEdgeCreation(db, components[i], components[j], edgeColl)
 			} else {
+				//fmt.Println("creating component to pod edge")
+				arango_utils.AttemptEdgeCreation(db, components[i], pods[rand.Intn(len(pods))], edgeColl)
 				break
 			}
 		}
@@ -41,6 +45,6 @@ func main() {
 
 	subgraphCount := arango_utils.GetSubgraphCount(components, db)
 	fmt.Printf("Number of subgraphs: %d\n", subgraphCount)
-        arango_utils.CheckGraph(db)
+	arango_utils.CheckComponentsConnectToComponentOrPod(db)
 }
 

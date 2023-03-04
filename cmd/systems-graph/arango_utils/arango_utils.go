@@ -21,9 +21,9 @@ type CollectionInfo struct {
 
 var Collections = []CollectionInfo{
 	{"binaries", medium, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("binary%d", i)} }},
-	{"firewallRules", small, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("rule%d", i)} }},
-	{"abstractServers", medium, func(i int) map[string]interface{} {
-		return map[string]interface{}{"_key": fmt.Sprintf("abstractServers%d", i)}
+	{"firewallRules", small, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("fireWallRule%d", i)} }},
+	{"pods", medium, func(i int) map[string]interface{} {
+		return map[string]interface{}{"_key": fmt.Sprintf("pod%d", i)}
 	}},
 	{"components", large, func(i int) map[string]interface{} {
 		return map[string]interface{}{"_key": fmt.Sprintf("component%d", i)}
@@ -32,9 +32,9 @@ var Collections = []CollectionInfo{
 	{"people", medium, func(i int) map[string]interface{} {
 		return map[string]interface{}{"_key": fmt.Sprintf("%s%d", GetRandomName(), i)}
 	}},
-	{"physicalServers", medium, func(i int) map[string]interface{} {
+	{"nodes", medium, func(i int) map[string]interface{} {
 		cores := rand.Intn(32)
-		return map[string]interface{}{"_key": fmt.Sprintf("server%d", i), "cores": cores}
+		return map[string]interface{}{"_key": fmt.Sprintf("node%d", i), "cores": cores}
 	}},
 }
 
@@ -54,12 +54,12 @@ func GetSubgraphCount(components []string, db driver.Database) int {
 	return subgraphCount
 }
 
-func AttemptEdgeCreation(db driver.Database, components []string, i int, j int, edgeColl driver.Collection) {
-	if !createsCycle(db, "edges", components[i], components[j]) {
+func AttemptEdgeCreation(db driver.Database, from string, to string, edgeColl driver.Collection) {
+	if !createsCycle(db, "edges", from, to) {
 
 		edge := map[string]interface{}{
-			"_from": components[i],
-			"_to":   components[j],
+			"_from": from,
+			"_to":   to,
 		}
 		_, err := edgeColl.CreateDocument(context.Background(), edge)
 		if err != nil {
@@ -68,29 +68,29 @@ func AttemptEdgeCreation(db driver.Database, components []string, i int, j int, 
 	}
 }
 
-func GetComponents(db driver.Database) []string {
-	var components []string
-	query := fmt.Sprintf("FOR node IN %s RETURN node._id", "components")
+func GetCollectionIDsAsString(db driver.Database, collection string) []string {
+	var collectionIDs []string
+	query := fmt.Sprintf("FOR node IN %s RETURN node._id", collection)
 	cursor, err := db.Query(context.Background(), query, nil)
 	if err != nil {
 		panic(err)
 	}
 	defer cursor.Close()
 	for {
-		var component string
-		_, err := cursor.ReadDocument(context.Background(), &component)
+		var collectionID string
+		_, err := cursor.ReadDocument(context.Background(), &collectionID)
 		if driver.IsNoMoreDocuments(err) {
 			break
 		} else if err != nil {
 			panic(err)
 		}
-		components = append(components, component)
+		collectionIDs = append(collectionIDs, collectionID)
 	}
 
 	if err != nil {
 		panic(err)
 	}
-	return components
+	return collectionIDs
 }
 
 func CreateEdgeCollection(db driver.Database, edgeCollName string) driver.Collection {
@@ -219,13 +219,8 @@ func GetRandomName() string {
 	return fmt.Sprintf("%s%s", firstName, lastName)
 }
 
-func CheckGraph(db driver.Database) {
-    components := GetComponents(db)
-    edgeCollName := "edges"
-    numFailures := 0	
-
-    for _, component := range components {
-        query := fmt.Sprintf("FOR v, e IN OUTBOUND '%s' %s RETURN v._id", component, edgeCollName)
+func CheckVertexHasOutgoingEdgeToCollection(db driver.Database, vertex string, edgeCollName string, collection []string) bool {
+        query := fmt.Sprintf("FOR v, e IN OUTBOUND '%s' %s RETURN v._id", vertex, edgeCollName)
         cursor, err := db.Query(context.Background(), query, nil)
         if err != nil {
             panic(err)
@@ -241,11 +236,7 @@ func CheckGraph(db driver.Database) {
             } else if err != nil {
                 panic(err)
             }
-            if neighbor == fmt.Sprintf("abstractServers%d", 0) {
-                hasOutgoingEdge = true
-                break
-            }
-            for _, c := range components {
+            for _, c := range collection {
                 if neighbor == c {
                     hasOutgoingEdge = true
                     break
@@ -255,14 +246,27 @@ func CheckGraph(db driver.Database) {
                 break
             }
         }
-        if !hasOutgoingEdge {
+        return hasOutgoingEdge
+}
+
+func CheckComponentsConnectToComponentOrPod(db driver.Database) {
+    components := GetCollectionIDsAsString(db, "components")
+    pods := GetCollectionIDsAsString(db, "pods")
+    edgeCollName := "edges"
+    numFailures := 0	
+
+    for _, component := range components {
+	hasOutgoingEdgeComponents := CheckVertexHasOutgoingEdgeToCollection(db, component, edgeCollName, components)
+	hasOutgoingEdgePods := CheckVertexHasOutgoingEdgeToCollection(db, component, edgeCollName, pods)
+        if !hasOutgoingEdgeComponents && !hasOutgoingEdgePods{
 	    numFailures++	
-            //fmt.Printf("Error: Component %s does not have an outgoing edge to another component or an abstract server\n", component)
+            //fmt.Printf("Error: Component %s does not have an outgoing edge to another component or a pod\n", component)
         }
     }
     if numFailures!=0 {
-        fmt.Printf("FAILURE: %d component(s) do(es) not have an outgoing edge to another component or an abstract server\n", numFailures) 
+        fmt.Printf("FAILURE: %d component(s) do(es) not have an outgoing edge to another component or a pod\n", numFailures) 
     } else {
-        fmt.Println("SUCCESS: all components have an outgoing edge to another component or an abstract server") 
+        fmt.Println("SUCCESS: all components have an outgoing edge to another component or a pod") 
     }
 }
+
