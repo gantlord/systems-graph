@@ -23,7 +23,10 @@ type CollectionInfo struct {
 
 var Collections = []CollectionInfo{
 	{"binaries", medium, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("binary%d", i)} }},
-	{"firewallRules", small, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("fireWallRule%d", i)} }},
+	{"firewallRules", small, func(i int) map[string]interface{} { 
+		instances := rand.Intn(small)
+		return map[string]interface{}{"_key": fmt.Sprintf("fireWallRule%d", i), "instances": instances} 
+	}},
 	{"pods", medium, func(i int) map[string]interface{} {
 		return map[string]interface{}{"_key": fmt.Sprintf("pod%d", i)}
 	}},
@@ -323,6 +326,29 @@ func AuditCollectionSubgraphsConnectToCollection(db driver.Database, sourceColle
         fmt.Printf("SUCCESS: %d/%d subgraphs in source collection %s have an outgoing edge to target collection %s\n", subgraphConnectionsCount, subgraphCount, sourceCollectionName, targetCollectionName) 
     }
 }
+
+func AuditAllVerticesConnectToCollection(db driver.Database, sourceCollectionName string, targetCollectionName string) {
+    
+    sourceCollectionIDs := GetCollectionIDsAsString(db, sourceCollectionName)
+    targetCollectionIDs := GetCollectionIDsAsString(db, targetCollectionName)
+    edgeCollName := "edges"
+    numFailures := 0	
+
+    for _, vertex := range sourceCollectionIDs {
+	hasOutgoingEdge := CheckVertexHasOutgoingEdgeToCollection(db, vertex, edgeCollName, targetCollectionIDs)
+        if !hasOutgoingEdge{
+	    numFailures++	
+        }
+    }
+
+    if numFailures!=0 {
+        fmt.Printf("FAILURE: %d/%d vertices in source collection %s have an outgoing edge to collection %s\n", numFailures, len(sourceCollectionIDs), sourceCollectionName, targetCollectionName) 
+	AuditsAllSucceeded = false
+    } else {
+        fmt.Printf("SUCCESS: %d/%d vertices in source collection %s have an outgoing edge to target collection %s\n", len(sourceCollectionIDs)-numFailures, len(sourceCollectionIDs), sourceCollectionName, targetCollectionName) 
+    }
+}
+
 
 func AuditComponentsConnectToComponentOrPod(db driver.Database) {
     components := GetCollectionIDsAsString(db, "components")
