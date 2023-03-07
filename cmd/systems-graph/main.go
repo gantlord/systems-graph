@@ -29,16 +29,17 @@ func main() {
 	nodes := arango_utils.GetCollectionIDsAsString(db, "nodes")
 
 	for i := range components {
-		arango_utils.CreateEdge(db, components[i], binaries[rand.Intn(len(binaries))], edgeColl)
+		arango_utils.CreateEdge(db, components[i], binaries[rand.Intn(len(binaries))], edgeColl, false)
+		//arango_utils.CreateEdge(db, components[i], components[len(components)-1-i], edgeColl, true)
 		for {
 			if rand.Intn(100) < arango_utils.ConnectionPct {
 				j := rand.Intn(len(components))
 				if i == j {
 					continue
 				}
-				arango_utils.CreateEdge(db, components[i], components[j], edgeColl)
+				arango_utils.CreateEdge(db, components[i], components[j], edgeColl, false)
 			} else {
-				arango_utils.CreateEdge(db, components[i], pods[rand.Intn(len(pods))], edgeColl)
+				arango_utils.CreateEdge(db, components[i], pods[rand.Intn(len(pods))], edgeColl, false)
 				break
 			}
 		}
@@ -46,19 +47,19 @@ func main() {
 	}
 
 	for i := range firewallRules {
-		arango_utils.CreateEdge(db, components[rand.Intn(len(components))], firewallRules[i], edgeColl)
+		arango_utils.CreateEdge(db, components[rand.Intn(len(components))], firewallRules[i], edgeColl, false)
 	}
 
 	for i := range purposes {
-		arango_utils.CreateEdge(db, components[rand.Intn(len(components))], purposes[i], edgeColl)
+		arango_utils.CreateEdge(db, components[rand.Intn(len(components))], purposes[i], edgeColl, false)
 	}
 
 	for i := range people {
-		arango_utils.CreateEdge(db, binaries[i], people[i], edgeColl)
+		arango_utils.CreateEdge(db, binaries[i], people[i], edgeColl, false)
 	}
 
 	for i := range nodes {
-		arango_utils.CreateEdge(db, pods[i], nodes[i], edgeColl)
+		arango_utils.CreateEdge(db, pods[i], nodes[i], edgeColl, false)
 	}
 
 	for _, collInfo := range arango_utils.Collections {
@@ -66,7 +67,7 @@ func main() {
 	}
 
 	arango_utils.AuditComponentsConnectToComponentOrPod(db)
-	arango_utils.AuditAllVerticesConnectToCollection(db, "components", "pods")
+	arango_utils.AuditAllVerticesConnectToCollection(db, "components", "pods", len(components))
 	arango_utils.AuditCollectionSubgraphsConnectToCollection(db, "components", "purposes")
 
 	if (arango_utils.AuditsAllSucceeded){

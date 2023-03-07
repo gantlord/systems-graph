@@ -8,8 +8,8 @@ import (
 	http "github.com/arangodb/go-driver/http"
 )
 
-const small = 10
-const medium = 10 * small
+const small = 1
+const medium = 10  * small
 const large = 10 * medium
 const ConnectionPct = 50
 
@@ -48,8 +48,8 @@ var lastNames = []string{"Smith", "Johnson", "Brown", "Davis", "Wilson", "Kim", 
 
 
 
-func CreateEdge(db driver.Database, from string, to string, edgeColl driver.Collection) {
-	if !createsCycle(db, "edges", from, to) {
+func CreateEdge(db driver.Database, from string, to string, edgeColl driver.Collection, panic_if_cycle bool) {
+	if !createsCycle(db, "edges", from, to, panic_if_cycle) {
 
 		edge := map[string]interface{}{
 			"_from": from,
@@ -191,7 +191,8 @@ func depthFirstSearch(db driver.Database, edgeCollName string, vertex string, vi
 	}
 }
 
-func createsCycle(db driver.Database, edgeCollName string, fromVertex string, toVertex string) bool {
+func createsCycle(db driver.Database, edgeCollName string, fromVertex string, toVertex string, panic_if_cycle bool) bool {
+	//TODO check that this method actually works - looks reasonably efficient - but is it right? needs a test
 	visitedVertices := make(map[string]bool)
 	visitedVertices[fromVertex] = true
 	query := fmt.Sprintf(`
@@ -204,7 +205,13 @@ func createsCycle(db driver.Database, edgeCollName string, fromVertex string, to
 		panic(err)
 	}
 	defer cursor.Close()
-	return cursor.Count() > 0
+	cycle_exists := cursor.Count() > 0
+	if cycle_exists {
+		fmt.Printf("cycle in %s to %s\n", fromVertex, toVertex)
+		panic("cycle")
+	}
+
+	return cycle_exists
 }
 
 func GetRandomName() string {
@@ -327,26 +334,30 @@ func AuditCollectionSubgraphsConnectToCollection(db driver.Database, sourceColle
     }
 }
 
-func AuditAllVerticesConnectToCollection(db driver.Database, sourceCollectionName string, targetCollectionName string) {
-    
-    sourceCollectionIDs := GetCollectionIDsAsString(db, sourceCollectionName)
-    targetCollectionIDs := GetCollectionIDsAsString(db, targetCollectionName)
-    edgeCollName := "edges"
-    numFailures := 0	
+func AuditAllVerticesConnectToCollection(db driver.Database, sourceCollectionName string, targetCollectionName string, sourceLength int) {
 
-    for _, vertex := range sourceCollectionIDs {
-	hasOutgoingEdge := CheckVertexHasOutgoingEdgeToCollection(db, vertex, edgeCollName, targetCollectionIDs)
-        if !hasOutgoingEdge{
-	    numFailures++	
-        }
+    query := fmt.Sprintf("let pArray=(for x in %s let countParts=(for v in outbound x edges filter is_same_collection(\"%s\", v._id) collect with count into cCount let part=cCount==0? 0:1 return part) return first(countParts)) return sum(flatten(pArray))", sourceCollectionName, targetCollectionName)
+
+    cursor, err := db.Query(context.Background(), query, nil)
+    if err != nil {
+        panic(err)
+    }
+    defer cursor.Close()
+    var result int
+    _, err = cursor.ReadDocument(context.Background(), &result)
+    if driver.IsNoMoreDocuments(err) {
+    } else if err != nil {
+	panic(err)
     }
 
-    if numFailures!=0 {
-        fmt.Printf("FAILURE: %d/%d vertices in source collection %s have an outgoing edge to collection %s\n", numFailures, len(sourceCollectionIDs), sourceCollectionName, targetCollectionName) 
-	AuditsAllSucceeded = false
+    resString := "FAILURE"
+    if result==sourceLength{
+        resString = "SUCCESS"
     } else {
-        fmt.Printf("SUCCESS: %d/%d vertices in source collection %s have an outgoing edge to target collection %s\n", len(sourceCollectionIDs)-numFailures, len(sourceCollectionIDs), sourceCollectionName, targetCollectionName) 
+	AuditsAllSucceeded = false
     }
+
+    fmt.Printf("%s: %d/%d vertices in source collection %s have an outgoing edge to collection %s\n", resString, result, sourceLength, sourceCollectionName, targetCollectionName) 
 }
 
 
