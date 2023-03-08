@@ -29,8 +29,9 @@ func main() {
 	nodes := arango_utils.GetCollectionIDsAsString(db, "nodes")
 
 	for i := range components {
+		//TODO make the purpose tagging more realistic / sparse, invert edge direction
+		arango_utils.CreateEdge(db, components[i], purposes[rand.Intn(len(purposes))], edgeColl, false)
 		arango_utils.CreateEdge(db, components[i], binaries[rand.Intn(len(binaries))], edgeColl, false)
-		//arango_utils.CreateEdge(db, components[i], components[len(components)-1-i], edgeColl, true)
 		for {
 			if rand.Intn(100) < arango_utils.ConnectionPct {
 				j := rand.Intn(len(components))
@@ -50,10 +51,6 @@ func main() {
 		arango_utils.CreateEdge(db, components[rand.Intn(len(components))], firewallRules[i], edgeColl, false)
 	}
 
-	for i := range purposes {
-		arango_utils.CreateEdge(db, components[rand.Intn(len(components))], purposes[i], edgeColl, false)
-	}
-
 	for i := range people {
 		arango_utils.CreateEdge(db, binaries[i], people[i], edgeColl, false)
 	}
@@ -66,7 +63,7 @@ func main() {
 	    arango_utils.AuditCollectionIsFullyConnected(collInfo, db)
 	}
 
-	arango_utils.AuditComponentsConnectToComponentOrPod(db)
+	arango_utils.AuditComponentsConnectToEitherCollection(db, "components", "components", "pods", len(components))
 	arango_utils.AuditAllVerticesConnectToCollection(db, "components", "pods", len(components))
 	arango_utils.AuditCollectionSubgraphsConnectToCollection(db, "components", "purposes")
 

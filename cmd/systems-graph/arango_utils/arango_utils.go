@@ -8,7 +8,7 @@ import (
 	http "github.com/arangodb/go-driver/http"
 )
 
-const small = 1
+const small = 10
 const medium = 10  * small
 const large = 10 * medium
 const ConnectionPct = 50
@@ -172,6 +172,7 @@ func CreateConnection() driver.Connection {
 func depthFirstSearch(db driver.Database, edgeCollName string, vertex string, visitedVertices map[string]bool) {
 	visitedVertices[vertex] = true
 	query := fmt.Sprintf("FOR v, e IN ANY '%s' %s RETURN v._id", vertex, edgeCollName)
+	//TODO almost certain to be broken without proper depth specified
 	cursor, err := db.Query(context.Background(), query, nil)
 	if err != nil {
 		panic(err)
@@ -193,6 +194,7 @@ func depthFirstSearch(db driver.Database, edgeCollName string, vertex string, vi
 
 func createsCycle(db driver.Database, edgeCollName string, fromVertex string, toVertex string, panic_if_cycle bool) bool {
 	//TODO check that this method actually works - looks reasonably efficient - but is it right? needs a test
+	//TODO almost certain to be broken, no max depth specified
 	visitedVertices := make(map[string]bool)
 	visitedVertices[fromVertex] = true
 	query := fmt.Sprintf(`
@@ -221,6 +223,7 @@ func GetRandomName() string {
 }
 
 func CheckVertexHasOutgoingEdgeToCollection(db driver.Database, vertex string, edgeCollName string, collection []string) bool {
+	//TODO check this is sane - might be the only working one
         query := fmt.Sprintf("FOR v, e IN OUTBOUND '%s' %s RETURN v._id", vertex, edgeCollName)
         cursor, err := db.Query(context.Background(), query, nil)
         if err != nil {
@@ -270,6 +273,7 @@ func subgraphHasConnectionToCollection(db driver.Database, edgeCollName string, 
 	targetCollectionIDs := GetCollectionIDsAsString(db, targetCollectionName)
         targetCollectionConnectionExists := CheckVertexHasOutgoingEdgeToCollection(db, vertex, edgeCollName, targetCollectionIDs)
 
+	//TODO may not work without proper max depth setting
 	query := fmt.Sprintf("FOR v, e IN ANY '%s' %s RETURN v._id", vertex, edgeCollName)
 
 	cursor, err := db.Query(context.Background(), query, nil)
@@ -307,23 +311,18 @@ func GetSubgraphCount(collectionIDs []string, db driver.Database) int {
 	return subgraphCount
 }
 
-func GetSubgraphConnectionsToTargetCollectionCount(sourceCollectionIDs []string, db driver.Database, targetCollectionName string) int {
-	var visitedVertices = make(map[string]bool)
-	var subgraphConnectedCount int
-	for _, vertex := range sourceCollectionIDs {
-		if !visitedVertices[vertex] {
-			if subgraphHasConnectionToCollection(db, "edges", vertex, visitedVertices, targetCollectionName){
-				subgraphConnectedCount++
-			}
-		}
-	}
-	return subgraphConnectedCount
+func GetSubgraphConnectionsToTargetCollectionCount(db driver.Database, sourceCollectionName string, targetCollectionName string) int {
+   //TODO may be broken, no max depth 
+	query := fmt.Sprintf("let pArray=(for x in %s let countParts=(for v in outbound x edges filter is_same_collection(\"%s\", v._id) collect with count into cCount let part=cCount==0? 0:1 return part) return first(countParts)) return sum(flatten(pArray))", sourceCollectionName, targetCollectionName)
+	result := queryIntResult(db, query)
+	
+	return result
 }
 
 func AuditCollectionSubgraphsConnectToCollection(db driver.Database, sourceCollectionName string, targetCollectionName string) {
     
     sourceCollectionIDs := GetCollectionIDsAsString(db, sourceCollectionName)
-    subgraphConnectionsCount := GetSubgraphConnectionsToTargetCollectionCount(sourceCollectionIDs, db, targetCollectionName)
+    subgraphConnectionsCount := GetSubgraphConnectionsToTargetCollectionCount(db, sourceCollectionName, targetCollectionName)
     subgraphCount := GetSubgraphCount(sourceCollectionIDs, db)
 
     if subgraphConnectionsCount!=subgraphCount {
@@ -334,11 +333,8 @@ func AuditCollectionSubgraphsConnectToCollection(db driver.Database, sourceColle
     }
 }
 
-func AuditAllVerticesConnectToCollection(db driver.Database, sourceCollectionName string, targetCollectionName string, sourceLength int) {
-
-    query := fmt.Sprintf("let pArray=(for x in %s let countParts=(for v in outbound x edges filter is_same_collection(\"%s\", v._id) collect with count into cCount let part=cCount==0? 0:1 return part) return first(countParts)) return sum(flatten(pArray))", sourceCollectionName, targetCollectionName)
-
-    cursor, err := db.Query(context.Background(), query, nil)
+func queryIntResult(db driver.Database, queryString string) int {
+    cursor, err := db.Query(context.Background(), queryString, nil)
     if err != nil {
         panic(err)
     }
@@ -349,36 +345,43 @@ func AuditAllVerticesConnectToCollection(db driver.Database, sourceCollectionNam
     } else if err != nil {
 	panic(err)
     }
+    return result
+}
 
+func AuditAllVerticesConnectToCollection(db driver.Database, sourceCollectionName string, targetCollectionName string, sourceCollectionLength int) {
+
+    query := fmt.Sprintf("let pArray=(for x in %s let countParts=(for v in outbound x edges filter is_same_collection(\"%s\", v._id) collect with count into cCount let part=cCount==0? 0:1 return part) return first(countParts)) return sum(flatten(pArray))", sourceCollectionName, targetCollectionName)
+    
+//TODO may be broken, no max depth
+
+    result := queryIntResult(db, query)
+   
     resString := "FAILURE"
-    if result==sourceLength{
+    if result==sourceCollectionLength{
         resString = "SUCCESS"
     } else {
 	AuditsAllSucceeded = false
     }
 
-    fmt.Printf("%s: %d/%d vertices in source collection %s have an outgoing edge to collection %s\n", resString, result, sourceLength, sourceCollectionName, targetCollectionName) 
+    fmt.Printf("%s: %d/%d vertices in source collection %s have an outgoing edge to collection %s\n", resString, result, sourceCollectionLength, sourceCollectionName, targetCollectionName) 
 }
 
 
-func AuditComponentsConnectToComponentOrPod(db driver.Database) {
-    components := GetCollectionIDsAsString(db, "components")
-    pods := GetCollectionIDsAsString(db, "pods")
-    edgeCollName := "edges"
-    numFailures := 0	
+func AuditComponentsConnectToEitherCollection(db driver.Database, sourceCollectionName string, targetCollectionName1 string, targetCollectionName2 string, sourceCollectionLength int) {
 
-    for _, component := range components {
-	hasOutgoingEdgeComponents := CheckVertexHasOutgoingEdgeToCollection(db, component, edgeCollName, components)
-	hasOutgoingEdgePods := CheckVertexHasOutgoingEdgeToCollection(db, component, edgeCollName, pods)
-        if !hasOutgoingEdgeComponents && !hasOutgoingEdgePods{
-	    numFailures++	
-        }
-    }
-    if numFailures!=0 {
-        fmt.Printf("FAILURE: %d/%d component(s) do(es) not have an outgoing edge to another component or a pod\n", numFailures, len(components)) 
-	AuditsAllSucceeded = false
+//TODO no max depth
+
+    query := fmt.Sprintf("let pArray=(for x in %s let countParts=(for v in outbound x edges filter is_same_collection(\"%s\", v._id) || is_same_collection(\"%s\", v._id) collect with count into cCount let part=cCount==0? 0:1 return part) return first(countParts)) return sum(flatten(pArray))", sourceCollectionName, targetCollectionName1, targetCollectionName2)
+    result := queryIntResult(db, query)
+
+    resString := "FAILURE"
+    if result==sourceCollectionLength{
+        resString = "SUCCESS"
     } else {
-        fmt.Printf("SUCCESS: %d/%d components have an outgoing edge to another component or a pod\n", len(components)-numFailures, len(components)) 
+	AuditsAllSucceeded = false
     }
+
+    fmt.Printf("%s: %d/%d vertices in source collection %s have an outgoing edge to collection %s or collection %s\n", resString, result, sourceCollectionLength, sourceCollectionName, targetCollectionName1, targetCollectionName2) 
+
 }
 
