@@ -169,29 +169,6 @@ func CreateConnection() driver.Connection {
 	return conn
 }
 
-func depthFirstSearch(db driver.Database, edgeCollName string, vertex string, visitedVertices map[string]bool) {
-	visitedVertices[vertex] = true
-	query := fmt.Sprintf("FOR v, e IN ANY '%s' %s RETURN v._id", vertex, edgeCollName)
-	//TODO almost certain to be broken without proper depth specified
-	cursor, err := db.Query(context.Background(), query, nil)
-	if err != nil {
-		panic(err)
-	}
-	defer cursor.Close()
-	for {
-		var neighbour string
-		_, err := cursor.ReadDocument(context.Background(), &neighbour)
-		if driver.IsNoMoreDocuments(err) {
-			break
-		} else if err != nil {
-			panic(err)
-		}
-		if !visitedVertices[neighbour] {
-			depthFirstSearch(db, edgeCollName, neighbour, visitedVertices)
-		}
-	}
-}
-
 func createsCycle(db driver.Database, edgeCollName string, fromVertex string, toVertex string, panic_if_cycle bool) bool {
 	//TODO check that this method actually works - looks reasonably efficient - but is it right? needs a test
 	//TODO almost certain to be broken, no max depth specified
@@ -254,8 +231,7 @@ func CheckVertexHasOutgoingEdgeToCollection(db driver.Database, vertex string, e
 }
 
 func AuditCollectionIsFullyConnected(collInfo CollectionInfo, db driver.Database){
-	collectionIDs := GetCollectionIDsAsString(db, collInfo.Name)
-	subgraphCount := GetSubgraphCount(collectionIDs, db)
+	subgraphCount := GetSubgraphCount(db, collInfo.Name)
 
 	if subgraphCount == 1 {
             fmt.Printf("SUCCESS: collection %s is fully connected for %d vertices\n", collInfo.Name, collInfo.Size)
@@ -299,16 +275,10 @@ func subgraphHasConnectionToCollection(db driver.Database, edgeCollName string, 
 
 }
 
-func GetSubgraphCount(collectionIDs []string, db driver.Database) int {
-	var visitedVertices = make(map[string]bool)
-	var subgraphCount int
-	for _, vertex := range collectionIDs {
-		if !visitedVertices[vertex] {
-			subgraphCount++
-			depthFirstSearch(db, "edges", vertex, visitedVertices)
-		}
-	}
-	return subgraphCount
+func GetSubgraphCount(db driver.Database, collectionName string) int {
+	//TODO this query hangs if run under certain circumstances, not yet determined
+	query := fmt.Sprintf("let finalArray=(for x in %s let subResult=(for v in 0..10 any x edges options {\"uniqueVertices\":\"path\"} filter is_same_collection(\"%s\", v._id) collect keys=v._key into found return distinct keys) return distinct subResult) return length(finalArray)", collectionName)
+	return queryIntResult(db, query)
 }
 
 func GetSubgraphConnectionsToTargetCollectionCount(db driver.Database, sourceCollectionName string, targetCollectionName string) int {
@@ -321,9 +291,8 @@ func GetSubgraphConnectionsToTargetCollectionCount(db driver.Database, sourceCol
 
 func AuditCollectionSubgraphsConnectToCollection(db driver.Database, sourceCollectionName string, targetCollectionName string) {
     
-    sourceCollectionIDs := GetCollectionIDsAsString(db, sourceCollectionName)
     subgraphConnectionsCount := GetSubgraphConnectionsToTargetCollectionCount(db, sourceCollectionName, targetCollectionName)
-    subgraphCount := GetSubgraphCount(sourceCollectionIDs, db)
+    subgraphCount := GetSubgraphCount(db, sourceCollectionName)
 
     if subgraphConnectionsCount!=subgraphCount {
         fmt.Printf("FAILURE: %d/%d subgraphs in source collection %s have an outgoing edge to collection %s\n", subgraphConnectionsCount, subgraphCount, sourceCollectionName, targetCollectionName) 
