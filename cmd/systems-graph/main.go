@@ -15,20 +15,20 @@ func main() {
 	client := arango_utils.CreateClient(conn)
 	db := arango_utils.GetDB(client)
 
-	keysMap := make(map[string][]string)
+	IDsMap := make(map[string][]string)
 
 	for _, collInfo := range arango_utils.Collections {
-		keysMap[collInfo.Name] = arango_utils.CreateCollectionFromInfo(db, collInfo)
+		IDsMap[collInfo.Name] = arango_utils.CreateCollectionFromInfo(db, collInfo)
 	}
 
 	edgeColl := arango_utils.CreateEdgeCollection(db, "edges")
-	components := keysMap["components"]
-	pods := keysMap["pods"]
-	binaries := keysMap["binaries"]
-	firewallRules := keysMap["firewallRules"]
-	purposes := keysMap["purposes"]
-	people := keysMap["people"]
-	nodes := keysMap["nodes"]
+	components := IDsMap["components"]
+	pods := IDsMap["pods"]
+	binaries := IDsMap["binaries"]
+	firewallRules := IDsMap["firewallRules"]
+	purposes := IDsMap["purposes"]
+	people := IDsMap["people"]
+	nodes := IDsMap["nodes"]
 
 	for i := range components {
 		//TODO make the purpose tagging more realistic / sparse, invert edge direction

@@ -63,31 +63,6 @@ func CreateEdge(db driver.Database, from string, to string, edgeColl driver.Coll
 	}
 }
 
-func GetCollectionIDsAsString(db driver.Database, collection string) []string {
-	var collectionIDs []string
-	query := fmt.Sprintf("FOR vertex IN %s RETURN vertex._id", collection)
-	cursor, err := db.Query(context.Background(), query, nil)
-	if err != nil {
-		panic(err)
-	}
-	defer cursor.Close()
-	for {
-		var collectionID string
-		_, err := cursor.ReadDocument(context.Background(), &collectionID)
-		if driver.IsNoMoreDocuments(err) {
-			break
-		} else if err != nil {
-			panic(err)
-		}
-		collectionIDs = append(collectionIDs, collectionID)
-	}
-
-	if err != nil {
-		panic(err)
-	}
-	return collectionIDs
-}
-
 func CreateEdgeCollection(db driver.Database, edgeCollName string) driver.Collection {
 	if edgeColl, err := db.Collection(context.TODO(), edgeCollName); err == nil {
 		edgeColl.Remove(context.TODO())
@@ -103,7 +78,7 @@ func CreateEdgeCollection(db driver.Database, edgeCollName string) driver.Collec
 }
 
 func CreateCollectionFromInfo(db driver.Database, collInfo CollectionInfo) []string {
-	keys := make([]string, collInfo.Size)
+	IDs := make([]string, collInfo.Size)
 	if coll, err := db.Collection(context.Background(), collInfo.Name); err == nil {
 		coll.Remove(context.TODO())
 	}
@@ -122,13 +97,13 @@ func CreateCollectionFromInfo(db driver.Database, collInfo CollectionInfo) []str
 
 	for i := 0; i < collInfo.Size; i++ {
 		doc := collInfo.DocGenFn(i)
-		keys[i] = doc["_key"].(string)
-		_, err := coll.CreateDocument(context.Background(), doc)
+		docMeta, err := coll.CreateDocument(context.Background(), doc)
 		if err != nil {
 			panic(err)
 		}
+		IDs[i] = string(docMeta.ID)
 	}
-	return keys
+	return IDs
 }
 
 func GetDB(client driver.Client) driver.Database {
