@@ -15,30 +15,34 @@ func main() {
 	client := arango_utils.CreateClient(conn)
 	db := arango_utils.GetDB(client)
 
+	IDsMap := make(map[string][]string)
+
 	for _, collInfo := range arango_utils.Collections {
-		arango_utils.CreateCollectionFromInfo(db, collInfo)
+		IDsMap[collInfo.Name] = arango_utils.CreateCollectionFromInfo(db, collInfo)
 	}
 
 	edgeColl := arango_utils.CreateEdgeCollection(db, "edges")
-	components := arango_utils.GetCollectionIDsAsString(db, "components")
-	pods := arango_utils.GetCollectionIDsAsString(db, "pods")
-	binaries := arango_utils.GetCollectionIDsAsString(db, "binaries")
-	firewallRules := arango_utils.GetCollectionIDsAsString(db, "firewallRules")
-	purposes := arango_utils.GetCollectionIDsAsString(db, "purposes")
-	people := arango_utils.GetCollectionIDsAsString(db, "people")
-	nodes := arango_utils.GetCollectionIDsAsString(db, "nodes")
+	components := IDsMap["components"]
+	pods := IDsMap["pods"]
+	binaries := IDsMap["binaries"]
+	firewallRules := IDsMap["firewallRules"]
+	purposes := IDsMap["purposes"]
+	people := IDsMap["people"]
+	nodes := IDsMap["nodes"]
 
 	for i := range components {
-		arango_utils.CreateEdge(db, components[i], binaries[rand.Intn(len(binaries))], edgeColl)
+		//TODO make the purpose tagging more realistic / sparse, invert edge direction
+		arango_utils.CreateEdge(db, components[i], purposes[rand.Intn(len(purposes))], edgeColl, false)
+		arango_utils.CreateEdge(db, components[i], binaries[rand.Intn(len(binaries))], edgeColl, false)
 		for {
 			if rand.Intn(100) < arango_utils.ConnectionPct {
 				j := rand.Intn(len(components))
 				if i == j {
 					continue
 				}
-				arango_utils.CreateEdge(db, components[i], components[j], edgeColl)
+				arango_utils.CreateEdge(db, components[i], components[j], edgeColl, false)
 			} else {
-				arango_utils.CreateEdge(db, components[i], pods[rand.Intn(len(pods))], edgeColl)
+				arango_utils.CreateEdge(db, components[i], pods[rand.Intn(len(pods))], edgeColl, false)
 				break
 			}
 		}
@@ -46,27 +50,23 @@ func main() {
 	}
 
 	for i := range firewallRules {
-		arango_utils.CreateEdge(db, components[rand.Intn(len(components))], firewallRules[i], edgeColl)
-	}
-
-	for i := range purposes {
-		arango_utils.CreateEdge(db, components[rand.Intn(len(components))], purposes[i], edgeColl)
+		arango_utils.CreateEdge(db, components[rand.Intn(len(components))], firewallRules[i], edgeColl, false)
 	}
 
 	for i := range people {
-		arango_utils.CreateEdge(db, binaries[i], people[i], edgeColl)
+		arango_utils.CreateEdge(db, binaries[i], people[i], edgeColl, false)
 	}
 
 	for i := range nodes {
-		arango_utils.CreateEdge(db, pods[i], nodes[i], edgeColl)
+		arango_utils.CreateEdge(db, pods[i], nodes[i], edgeColl, false)
 	}
 
 	for _, collInfo := range arango_utils.Collections {
 	    arango_utils.AuditCollectionIsFullyConnected(collInfo, db)
 	}
 
-	arango_utils.AuditComponentsConnectToComponentOrPod(db)
-	arango_utils.AuditAllVerticesConnectToCollection(db, "components", "pods")
+	arango_utils.AuditComponentsConnectToEitherCollection(db, "components", "components", "pods", len(components))
+	arango_utils.AuditAllVerticesConnectToCollection(db, "components", "pods", len(components))
 	arango_utils.AuditCollectionSubgraphsConnectToCollection(db, "components", "purposes")
 
 	if (arango_utils.AuditsAllSucceeded){
