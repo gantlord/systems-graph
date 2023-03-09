@@ -14,6 +14,7 @@ const large = 10 * medium
 const ConnectionPct = 50
 
 var AuditsAllSucceeded = true
+var defaultMaxDepth = 20
 
 type CollectionInfo struct {
 	Name     string
@@ -277,7 +278,7 @@ func subgraphHasConnectionToCollection(db driver.Database, edgeCollName string, 
 
 func GetSubgraphCount(db driver.Database, collectionName string) int {
 	//TODO this query hangs if run under certain circumstances, not yet determined
-	query := fmt.Sprintf("let finalArray=(for x in %s let subResult=(for v in 0..10 any x edges options {\"uniqueVertices\":\"path\"} filter is_same_collection(\"%s\", v._id) collect keys=v._key into found return distinct keys) return distinct subResult) return length(finalArray)", collectionName)
+	query := fmt.Sprintf("let finalArray=(for x in %s let subResult=(for v in 0..%d any x edges options {\"uniqueVertices\":\"global\", \"order\":\"bfs\", \"vertexCollections\":\"%s\"} collect keys=v._key return distinct keys) return distinct subResult) return length(finalArray)", collectionName, defaultMaxDepth, collectionName)
 	return queryIntResult(db, query)
 }
 
