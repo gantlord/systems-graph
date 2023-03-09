@@ -102,19 +102,8 @@ func CreateEdgeCollection(db driver.Database, edgeCollName string) driver.Collec
 	return edgeColl
 }
 
-func GetDocumentCount(db driver.Database, ctx context.Context, collInfo CollectionInfo) int64 {
-	collection, err := db.Collection(ctx, collInfo.Name)
-	if err != nil {
-		panic(err)
-	}
-	count, err := collection.Count(ctx)
-	if err != nil {
-		panic(err)
-	}
-	return count
-}
-
-func CreateCollectionFromInfo(db driver.Database, collInfo CollectionInfo) context.Context {
+func CreateCollectionFromInfo(db driver.Database, collInfo CollectionInfo) []string {
+	keys := make([]string, collInfo.Size)
 	if coll, err := db.Collection(context.Background(), collInfo.Name); err == nil {
 		coll.Remove(context.TODO())
 	}
@@ -133,12 +122,13 @@ func CreateCollectionFromInfo(db driver.Database, collInfo CollectionInfo) conte
 
 	for i := 0; i < collInfo.Size; i++ {
 		doc := collInfo.DocGenFn(i)
+		keys[i] = doc["_key"].(string)
 		_, err := coll.CreateDocument(context.Background(), doc)
 		if err != nil {
 			panic(err)
 		}
 	}
-	return ctx
+	return keys
 }
 
 func GetDB(client driver.Client) driver.Database {
@@ -200,37 +190,6 @@ func GetRandomName() string {
 	return fmt.Sprintf("%s%s", firstName, lastName)
 }
 
-func CheckVertexHasOutgoingEdgeToCollection(db driver.Database, vertex string, edgeCollName string, collection []string) bool {
-	//TODO check this is sane - might be the only working one
-        query := fmt.Sprintf("FOR v, e IN OUTBOUND '%s' %s RETURN v._id", vertex, edgeCollName)
-        cursor, err := db.Query(context.Background(), query, nil)
-        if err != nil {
-            panic(err)
-        }
-        defer cursor.Close()
-
-        hasOutgoingEdge := false
-        for {
-            var neighbour string
-            _, err := cursor.ReadDocument(context.Background(), &neighbour)
-            if driver.IsNoMoreDocuments(err) {
-                break
-            } else if err != nil {
-                panic(err)
-            }
-            for _, c := range collection {
-                if neighbour == c {
-                    hasOutgoingEdge = true
-                    break
-                }
-            }
-            if hasOutgoingEdge {
-                break
-            }
-        }
-        return hasOutgoingEdge
-}
-
 func AuditCollectionIsFullyConnected(collInfo CollectionInfo, db driver.Database){
 	subgraphCount := GetSubgraphCount(db, collInfo.Name)
 
@@ -242,42 +201,7 @@ func AuditCollectionIsFullyConnected(collInfo CollectionInfo, db driver.Database
 	}
 }
 
-
-
-func subgraphHasConnectionToCollection(db driver.Database, edgeCollName string, vertex string, visitedVertices map[string]bool, targetCollectionName string) bool {
-	visitedVertices[vertex] = true
-        
-	targetCollectionIDs := GetCollectionIDsAsString(db, targetCollectionName)
-        targetCollectionConnectionExists := CheckVertexHasOutgoingEdgeToCollection(db, vertex, edgeCollName, targetCollectionIDs)
-
-	//TODO may not work without proper max depth setting
-	query := fmt.Sprintf("FOR v, e IN ANY '%s' %s RETURN v._id", vertex, edgeCollName)
-
-	cursor, err := db.Query(context.Background(), query, nil)
-	if err != nil {
-		panic(err)
-	}
-	defer cursor.Close()
-	for {
-		var neighbour string
-		_, err := cursor.ReadDocument(context.Background(), &neighbour)
-		if driver.IsNoMoreDocuments(err) {
-			break
-		} else if err != nil {
-			panic(err)
-		}
-		if !visitedVertices[neighbour] {
-                    result := subgraphHasConnectionToCollection(db, edgeCollName, neighbour, visitedVertices, targetCollectionName)
-	            targetCollectionConnectionExists = result || targetCollectionConnectionExists
-		}
-	}
-
-	return targetCollectionConnectionExists
-
-}
-
 func GetSubgraphCount(db driver.Database, collectionName string) int {
-	//TODO this query hangs if run under certain circumstances, not yet determined
 	query := fmt.Sprintf("let finalArray=(for x in %s let subResult=(for v in 0..%d any x edges options {\"uniqueVertices\":\"global\", \"order\":\"bfs\", \"vertexCollections\":\"%s\"} collect keys=v._key return distinct keys) return distinct subResult) return length(finalArray)", collectionName, defaultMaxDepth, collectionName)
 	return queryIntResult(db, query)
 }
