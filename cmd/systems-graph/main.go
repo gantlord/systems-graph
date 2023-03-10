@@ -8,65 +8,13 @@ import (
 )
 
 
-type DBType int
-
-const (
-    Neo4j DBType = iota
-    ArangoDB
-)
-
-func (dbType DBType) String() string {
-    switch dbType {
-    case Neo4j:
-        return "neo4j"
-    case ArangoDB:
-        return "arangodb"
-    default:
-        panic(fmt.Sprintf("Unknown database type: %d", dbType))
-    }
-}
-
-type Config struct {
-    DBType DBType
-}
-
-
-func parseConfig() *Config {
-    if len(os.Args) != 2 {
-        fmt.Println("Usage: ./program-name [neo4j|arangodb]")
-        os.Exit(1)
-    }
-
-    var dbType DBType
-    switch os.Args[1] {
-    case "neo4j":
-        dbType = Neo4j
-    case "arangodb":
-        dbType = ArangoDB
-    default:
-        fmt.Println("Usage: ./program-name [neo4j|arangodb]")
-        os.Exit(1)
-    }
-
-    config := &Config{
-        DBType: dbType,
-    }
-
-    return config
-}
 
 
 func main() {
-    config := parseConfig()
-
-    fmt.Printf("Selected DB type: %s\n", config.DBType)
-
-
 	rand.New(rand.NewSource(0))
 
-	conn := sg_utils.CreateConnection()
-	client := sg_utils.CreateClient(conn)
-	db := sg_utils.GetDB(client)
+    	config := sg_utils.ParseConfig()
+	db := sg_utils.GetDB(config)
 
 	IDsMap := make(map[string][]string)
 

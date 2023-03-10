@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"os"
 	//"systems-graph/arango_utils"
 	//"systems-graph/neo_utils"
 	arango_driver "github.com/arangodb/go-driver"
@@ -17,6 +18,54 @@ const ConnectionPct = 50
 
 var AuditsAllSucceeded = true
 var DefaultMaxDepth = 20
+
+type DBType int
+
+const (
+    Neo4j DBType = iota
+    ArangoDB
+)
+
+func (dbType DBType) String() string {
+    switch dbType {
+    case Neo4j:
+        return "neo4j"
+    case ArangoDB:
+        return "arangodb"
+    default:
+        panic(fmt.Sprintf("Unknown database type: %d", dbType))
+    }
+}
+
+type Config struct {
+    dbType DBType
+}
+
+
+func ParseConfig() Config {
+    if len(os.Args) != 2 {
+        fmt.Println("Usage: ./program-name [neo4j|arangodb]")
+        os.Exit(1)
+    }
+
+    var dbType DBType
+    switch os.Args[1] {
+    case "neo4j":
+        dbType = Neo4j
+    case "arangodb":
+        dbType = ArangoDB
+    default:
+        fmt.Println("Usage: ./program-name [neo4j|arangodb]")
+        os.Exit(1)
+    }
+
+    var config Config
+    config.dbType = dbType
+    	
+    fmt.Printf("Selected DB type: %s\n", config.dbType)
+
+    return config
+}
 
 type CollectionInfo struct {
 	Name     string
@@ -49,30 +98,37 @@ var Collections = []CollectionInfo{
 var firstNames = []string{"Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace", "Heidi", "Ivan", "Julia", "Kevin", "Linda", "Mallory", "Nancy", "Oscar", "Peggy", "Quentin", "Randy", "Sybil", "Trent", "Ursula", "Victor", "Wendy", "Xander", "Yvonne", "Zelda"}
 var lastNames = []string{"Smith", "Johnson", "Brown", "Davis", "Wilson", "Kim", "Schmidt", "Petrov", "Rodriguez", "Garcia", "Gonzalez", "Martinez", "Hernandez", "Lopez", "Perez", "Jackson", "Taylor", "Lee", "Nguyen", "Chen", "Wang", "Singh", "Kim", "Gupta", "Kumar"}
 
+type Connection struct {
+	arangoConnection arango_driver.Connection
+	dbType DBType
+}
+
 type Client struct {
+	connection Connection
 	arangoClient arango_driver.Client
 }
 
 type Database struct {
+	client Client
 	arangoDatabase arango_driver.Database
 }
 
-type Connection struct {
-	arangoConnection arango_driver.Connection
-}
-
-func GetDB(client Client) Database {
-	var db Database
+func CreateConnection(config Config) Connection {
+	var conn Connection
+	conn.dbType = config.dbType
 	var err error
-	db.arangoDatabase, err = client.arangoClient.Database(context.TODO(), "_system")
+	conn.arangoConnection, err = http.NewConnection(http.ConnectionConfig{
+		Endpoints: []string{"http://localhost:8529"},
+	})
 	if err != nil {
 		panic(err)
 	}
-	return db
+	return conn
 }
 
 func CreateClient(conn Connection) Client {
 	var client Client
+	client.connection = conn
 	var err error
 	client.arangoClient, err = arango_driver.NewClient(arango_driver.ClientConfig{
 		Connection:     conn.arangoConnection,
@@ -84,17 +140,20 @@ func CreateClient(conn Connection) Client {
 	return client
 }
 
-func CreateConnection() Connection {
-	var conn Connection
+func GetDB(config Config) Database {
+	connection := CreateConnection(config)
+	client := CreateClient(connection)
+	var db Database
+	db.client = client
 	var err error
-	conn.arangoConnection, err = http.NewConnection(http.ConnectionConfig{
-		Endpoints: []string{"http://localhost:8529"},
-	})
+	db.arangoDatabase, err = client.arangoClient.Database(context.TODO(), "_system")
 	if err != nil {
 		panic(err)
 	}
-	return conn
+	return db
 }
+
+
 
 func CreateEdge(db Database, from string, to string, edgeColl arango_driver.Collection, panic_if_cycle bool) {
 	if !createsCycle(db, "edges", from, to, panic_if_cycle) {
