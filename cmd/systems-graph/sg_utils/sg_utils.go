@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	//"systems-graph/arango_utils"
-	//"systems-graph/neo_utils"
+	"systems-graph/arango_utils"
+	"systems-graph/neo_utils"
 	arango_driver "github.com/arangodb/go-driver"
-	http "github.com/arangodb/go-driver/http"
+	neo_driver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	//http "github.com/arangodb/go-driver/http"
+
 )
 
 const Small = 10
@@ -100,42 +102,40 @@ var lastNames = []string{"Smith", "Johnson", "Brown", "Davis", "Wilson", "Kim", 
 
 type Connection struct {
 	arangoConnection arango_driver.Connection
+	neoDriver neo_driver.Driver
 	dbType DBType
 }
 
 type Client struct {
 	connection Connection
 	arangoClient arango_driver.Client
+	neoDriver neo_driver.Driver
 }
 
 type Database struct {
 	client Client
 	arangoDatabase arango_driver.Database
+	neoSession neo_driver.Session
 }
 
 func CreateConnection(config Config) Connection {
-	var conn Connection
-	conn.dbType = config.dbType
-	var err error
-	conn.arangoConnection, err = http.NewConnection(http.ConnectionConfig{
-		Endpoints: []string{"http://localhost:8529"},
-	})
-	if err != nil {
-		panic(err)
+	var connection Connection
+	connection.dbType = config.dbType
+	if connection.dbType==ArangoDB {
+		connection.arangoConnection = arango_utils.CreateConnection()
+	} else {
+		connection.neoDriver = neo_utils.CreateDriver()
 	}
-	return conn
+	return connection
 }
 
 func CreateClient(conn Connection) Client {
 	var client Client
 	client.connection = conn
-	var err error
-	client.arangoClient, err = arango_driver.NewClient(arango_driver.ClientConfig{
-		Connection:     conn.arangoConnection,
-		Authentication: arango_driver.BasicAuthentication("username", "password"),
-	})
-	if err != nil {
-		panic(err)
+	if client.connection.dbType==ArangoDB {
+		client.arangoClient = arango_utils.CreateClient(conn.arangoConnection)
+	} else {
+		client.neoDriver = conn.neoDriver
 	}
 	return client
 }
@@ -144,11 +144,10 @@ func GetDB(config Config) Database {
 	connection := CreateConnection(config)
 	client := CreateClient(connection)
 	var db Database
-	db.client = client
-	var err error
-	db.arangoDatabase, err = client.arangoClient.Database(context.TODO(), "_system")
-	if err != nil {
-		panic(err)
+	if connection.dbType==ArangoDB {
+		db.arangoDatabase = arango_utils.GetDB(client.arangoClient)
+	} else {
+		db.neoSession = neo_utils.GetDB(client.neoDriver)
 	}
 	return db
 }

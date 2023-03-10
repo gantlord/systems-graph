@@ -15,6 +15,7 @@ func GetDB(client driver.Client) driver.Database {
 }
 
 func CreateClient(conn driver.Connection) driver.Client {
+	//TODO can be joined with the below
 	client, err := driver.NewClient(driver.ClientConfig{
 		Connection:     conn,
 		Authentication: driver.BasicAuthentication("username", "password"),
