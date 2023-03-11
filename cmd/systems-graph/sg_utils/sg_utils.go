@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"systems-graph/arango_utils"
+	"strconv"
 	"systems-graph/neo_utils"
+	"systems-graph/arango_utils"
 	arango_driver "github.com/arangodb/go-driver"
 	neo_driver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	//http "github.com/arangodb/go-driver/http"
@@ -116,6 +117,7 @@ type Database struct {
 	client Client
 	arangoDatabase arango_driver.Database
 	neoSession neo_driver.Session
+	dbType DBType
 }
 
 func CreateConnection(config Config) Connection {
@@ -144,6 +146,7 @@ func GetDB(config Config) Database {
 	connection := CreateConnection(config)
 	client := CreateClient(connection)
 	var db Database
+	db.dbType = connection.dbType
 	if connection.dbType==ArangoDB {
 		db.arangoDatabase = arango_utils.GetDB(client.arangoClient)
 	} else {
@@ -183,34 +186,69 @@ func CreateEdgeCollection(db Database, edgeCollName string) arango_driver.Collec
 }
 
 func CreateCollectionFromInfo(db Database, collInfo CollectionInfo) []string {
-	IDs := make([]string, collInfo.Size)
-	if coll, err := db.arangoDatabase.Collection(context.Background(), collInfo.Name); err == nil {
-		coll.Remove(context.TODO())
-	}
+	docIDs := make([]string, collInfo.Size)
+	var coll arango_driver.Collection
+	var err error
 
-	ctx := context.Background()
-	options := &arango_driver.CreateCollectionOptions{}
-	_, err := db.arangoDatabase.CreateCollection(ctx, collInfo.Name, options)
-	if err != nil {
-		panic(err)
-	}
-
-	coll, err := db.arangoDatabase.Collection(context.Background(), collInfo.Name)
-	if err != nil {
-		panic(err)
-	}
-
-	for i := 0; i < collInfo.Size; i++ {
-		doc := collInfo.DocGenFn(i)
-		docMeta, err := coll.CreateDocument(context.Background(), doc)
+	if db.dbType==ArangoDB {
+		if coll, err = db.arangoDatabase.Collection(context.Background(), collInfo.Name); err == nil {
+			coll.Remove(context.TODO())
+		}
+		ctx := context.Background()
+		options := &arango_driver.CreateCollectionOptions{}
+		_, err = db.arangoDatabase.CreateCollection(ctx, collInfo.Name, options)
 		if err != nil {
 			panic(err)
 		}
-		IDs[i] = string(docMeta.ID)
-	}
-	return IDs
-}
 
+		coll, err = db.arangoDatabase.Collection(context.Background(), collInfo.Name)
+		if err != nil {
+			panic(err)
+		}
+
+	} else {
+		cypher := "MATCH (d:" + collInfo.Name + ") DETACH DELETE d"
+		_, err = db.neoSession.WriteTransaction(func(tx neo_driver.Transaction) (interface{}, error) {
+			return tx.Run(cypher, nil)
+		})
+		if err != nil {
+			panic(err)
+		}
+
+	}
+
+
+	for i := 0; i < collInfo.Size; i++ {
+		doc := collInfo.DocGenFn(i)
+		if db.dbType==ArangoDB {
+			docMeta, err := coll.CreateDocument(context.Background(), doc)
+			if err != nil {
+				panic(err)
+			}
+			docIDs[i] = string(docMeta.ID)
+		} else {
+			cypher := "CREATE (d:" + collInfo.Name + ") SET d = $props RETURN id(d)"
+			result, err := db.neoSession.WriteTransaction(func(tx neo_driver.Transaction) (interface{}, error) {
+				return tx.Run(cypher, map[string]interface{}{
+					"props": doc,
+				})
+			})
+			if err != nil {
+				panic(err)
+			}
+
+			if resultSummary, err := result.(neo_driver.Result).Consume(); err != nil {
+				panic(err)
+			} else {
+				docIDs[i] = strconv.Itoa(resultSummary.Counters().NodesCreated())
+			}
+
+		}
+
+	}
+
+	return docIDs
+}
 
 func createsCycle(db Database, edgeCollName string, fromVertex string, toVertex string, panic_if_cycle bool) bool {
 	//TODO check that this method actually works - looks reasonably efficient - but is it right? needs a test
@@ -296,6 +334,7 @@ func queryIntResult(db Database, queryString string) int {
 
 func AuditAllVerticesConnectToCollection(db Database, sourceCollectionName string, targetCollectionName string, sourceCollectionLength int) {
 
+
     query := fmt.Sprintf("let pArray=(for x in %s let countParts=(for v in outbound x edges filter is_same_collection(\"%s\", v._id) collect with count into cCount let part=cCount==0? 0:1 return part) return first(countParts)) return sum(flatten(pArray))", sourceCollectionName, targetCollectionName)
     
 //TODO may be broken, no max depth
@@ -330,4 +369,3 @@ func AuditComponentsConnectToEitherCollection(db Database, sourceCollectionName 
     fmt.Printf("%s: %d/%d vertices in source collection %s have an outgoing edge to collection %s or collection %s\n", resString, result, sourceCollectionLength, sourceCollectionName, targetCollectionName1, targetCollectionName2) 
 
 }
-
