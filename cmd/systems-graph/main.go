@@ -43,7 +43,7 @@ func main() {
 				if i == j {
 					continue
 				}
-				sg_utils.CreateEdge(db, "components", "components", components[i], components[j], "DEPENDS_ON", edgeColl, false)
+				//sg_utils.CreateEdge(db, "components", "components", components[i], components[j], "DEPENDS_ON", edgeColl, false)
 			} else {
 				sg_utils.CreateEdge(db, "components", "pods", components[i], pods[rand.Intn(len(pods))], "RESIDES_ON", edgeColl, false)
 				break

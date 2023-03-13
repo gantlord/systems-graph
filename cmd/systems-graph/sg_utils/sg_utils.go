@@ -14,9 +14,9 @@ import (
 
 )
 
-const Small = 2
-const Medium = 2  * Small
-const Large = 2 * Medium
+const Small = 1
+const Medium = 10  * Small
+const Large = 10 * Medium
 const ConnectionPct = 50
 
 var AuditsAllSucceeded = true
@@ -193,7 +193,7 @@ func CreateEdge(db Database, fS string, tS string, from string, to string, edgeL
 				    panic(err)
 			    }
 			    result.Consume()
-		fmt.Printf("%s\n", query) 	
+		//fmt.Printf("%s\n", query) 	
 	}
 }
 
@@ -268,7 +268,7 @@ func CreateCollectionFromInfo(db Database, collInfo CollectionInfo) []string {
 			query := fmt.Sprintf("MERGE (n:%s %s)", collInfo.Name, stringFromDocFn(doc))
 
 
-			    fmt.Printf("%s\n", query)
+			    //fmt.Printf("%s\n", query)
 
 				// TODO apparently Run isn't as proper as ExecuteWrite so should use that down the track
 			    result,err := db.neoSession.Run(query, nil)
