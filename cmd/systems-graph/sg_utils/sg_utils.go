@@ -3,9 +3,9 @@ package sg_utils
 import (
 	"context"
 	"fmt"
+	"strings"
 	"math/rand"
 	"os"
-	"strconv"
 	"systems-graph/neo_utils"
 	"systems-graph/arango_utils"
 	arango_driver "github.com/arangodb/go-driver"
@@ -14,9 +14,9 @@ import (
 
 )
 
-const Small = 10
-const Medium = 10  * Small
-const Large = 10 * Medium
+const Small = 2
+const Medium = 2  * Small
+const Large = 2 * Medium
 const ConnectionPct = 50
 
 var AuditsAllSucceeded = true
@@ -80,7 +80,7 @@ var Collections = []CollectionInfo{
 	{"binaries", Medium, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("binary%d", i)} }},
 	{"firewallRules", Small, func(i int) map[string]interface{} { 
 		instances := rand.Intn(Small)
-		return map[string]interface{}{"_key": fmt.Sprintf("fireWallRule%d", i), "instances": instances} 
+		return map[string]interface{}{"_key": fmt.Sprintf("fireWallRule%d", i), "instances": fmt.Sprintf("%d", instances)} 
 	}},
 	{"pods", Medium, func(i int) map[string]interface{} {
 		return map[string]interface{}{"_key": fmt.Sprintf("pod%d", i)}
@@ -89,13 +89,31 @@ var Collections = []CollectionInfo{
 		return map[string]interface{}{"_key": fmt.Sprintf("component%d", i)}
 	}},
 	{"purposes", Medium, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("purpose%d", i)} }},
+	{"nodes", Medium, func(i int) map[string]interface{} {
+		cores := rand.Intn(32)
+		return map[string]interface{}{"_key": fmt.Sprintf("node%d", i), "cores": fmt.Sprintf("%d", cores)}
+	}},
 	{"people", Medium, func(i int) map[string]interface{} {
 		return map[string]interface{}{"_key": fmt.Sprintf("%s%d", GetRandomName(), i)}
 	}},
-	{"nodes", Medium, func(i int) map[string]interface{} {
-		cores := rand.Intn(32)
-		return map[string]interface{}{"_key": fmt.Sprintf("node%d", i), "cores": cores}
-	}},
+}
+
+func stringFromDocFn(doc map[string]interface{}) string {
+    var builder strings.Builder
+    builder.WriteString("{ ")
+
+    first := true
+    for key, value := range doc {
+ 	//TODO find neater way to do this
+	if !first {
+		builder.WriteString(fmt.Sprintf(", "))
+	}
+	first = false
+        builder.WriteString(fmt.Sprintf("%s:\"%s\"", key, value))
+    }
+
+    builder.WriteString("}")
+    return builder.String()
 }
 
 var firstNames = []string{"Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace", "Heidi", "Ivan", "Julia", "Kevin", "Linda", "Mallory", "Nancy", "Oscar", "Peggy", "Quentin", "Randy", "Sybil", "Trent", "Ursula", "Victor", "Wendy", "Xander", "Yvonne", "Zelda"}
@@ -155,10 +173,8 @@ func GetDB(config Config) Database {
 	return db
 }
 
-
-
-func CreateEdge(db Database, from string, to string, edgeColl arango_driver.Collection, panic_if_cycle bool) {
-	if !createsCycle(db, "edges", from, to, panic_if_cycle) {
+func CreateEdge(db Database, fS string, tS string, from string, to string, edgeLabel string, edgeColl arango_driver.Collection, panic_if_cycle bool) {
+	if db.dbType==ArangoDB && !createsCycle(db, "edges", from, to, panic_if_cycle) {
 
 		edge := map[string]interface{}{
 			"_from": from,
@@ -168,10 +184,24 @@ func CreateEdge(db Database, from string, to string, edgeColl arango_driver.Coll
 		if err != nil {
 			panic(err)
 		}
+	} else {
+		query := fmt.Sprintf("match (a:%s {_key:\"%s\"}) match (b:%s {_key:\"%s\"}) merge (a)-[:%s]->(b)", fS, from, tS, to, edgeLabel)
+				//TODO apparently Run isn't as proper as ExecuteWrite so should use that down the track
+			    result,err := db.neoSession.Run(query, nil)
+			    if err != nil {
+				    //TODO need autoformatter
+				    panic(err)
+			    }
+			    result.Consume()
+		fmt.Printf("%s\n", query) 	
 	}
 }
 
 func CreateEdgeCollection(db Database, edgeCollName string) arango_driver.Collection {
+	if db.dbType==Neo4j {
+		//TODO needs cleaned up for neo4j
+		return nil
+	}
 	if edgeColl, err := db.arangoDatabase.Collection(context.TODO(), edgeCollName); err == nil {
 		edgeColl.Remove(context.TODO())
 	}
@@ -185,11 +215,29 @@ func CreateEdgeCollection(db Database, edgeCollName string) arango_driver.Collec
 	return edgeColl
 }
 
+
+func DeleteNeoDB(db Database) {
+	cypher := "MATCH (d) DETACH DELETE d"
+	_, err := db.neoSession.WriteTransaction(func(tx neo_driver.Transaction) (interface{}, error) {
+		return tx.Run(cypher, nil)
+	})
+	if err != nil {
+		panic(err)
+	}
+}
+
+func DeleteDB(db Database) {
+	if db.dbType==Neo4j {
+		DeleteNeoDB(db)
+	}
+}
+
 func CreateCollectionFromInfo(db Database, collInfo CollectionInfo) []string {
 	docIDs := make([]string, collInfo.Size)
 	var coll arango_driver.Collection
 	var err error
 
+	//TODO more efficient deletion could go in deleteDB
 	if db.dbType==ArangoDB {
 		if coll, err = db.arangoDatabase.Collection(context.Background(), collInfo.Name); err == nil {
 			coll.Remove(context.TODO())
@@ -206,17 +254,7 @@ func CreateCollectionFromInfo(db Database, collInfo CollectionInfo) []string {
 			panic(err)
 		}
 
-	} else {
-		cypher := "MATCH (d:" + collInfo.Name + ") DETACH DELETE d"
-		_, err = db.neoSession.WriteTransaction(func(tx neo_driver.Transaction) (interface{}, error) {
-			return tx.Run(cypher, nil)
-		})
-		if err != nil {
-			panic(err)
-		}
-
-	}
-
+	} 
 
 	for i := 0; i < collInfo.Size; i++ {
 		doc := collInfo.DocGenFn(i)
@@ -227,21 +265,20 @@ func CreateCollectionFromInfo(db Database, collInfo CollectionInfo) []string {
 			}
 			docIDs[i] = string(docMeta.ID)
 		} else {
-			cypher := "CREATE (d:" + collInfo.Name + ") SET d = $props RETURN id(d)"
-			result, err := db.neoSession.WriteTransaction(func(tx neo_driver.Transaction) (interface{}, error) {
-				return tx.Run(cypher, map[string]interface{}{
-					"props": doc,
-				})
-			})
-			if err != nil {
-				panic(err)
-			}
+			query := fmt.Sprintf("MERGE (n:%s %s)", collInfo.Name, stringFromDocFn(doc))
 
-			if resultSummary, err := result.(neo_driver.Result).Consume(); err != nil {
-				panic(err)
-			} else {
-				docIDs[i] = strconv.Itoa(resultSummary.Counters().NodesCreated())
-			}
+
+			    fmt.Printf("%s\n", query)
+
+				// TODO apparently Run isn't as proper as ExecuteWrite so should use that down the track
+			    result,err := db.neoSession.Run(query, nil)
+			    if err != nil {
+				    //TODO need autoformatter
+				    panic(err)
+			    }
+			    result.Consume()
+
+			docIDs[i] = fmt.Sprintf("%s", doc["_key"])
 
 		}
 
@@ -251,6 +288,12 @@ func CreateCollectionFromInfo(db Database, collInfo CollectionInfo) []string {
 }
 
 func createsCycle(db Database, edgeCollName string, fromVertex string, toVertex string, panic_if_cycle bool) bool {
+	//TODO since this probably doesn't even work for arangodb already, just returning false for neo4j
+	if db.dbType==Neo4j {
+		return false
+	}
+
+
 	//TODO check that this method actually works - looks reasonably efficient - but is it right? needs a test
 	//TODO almost certain to be broken, no max depth specified
 	visitedVertices := make(map[string]bool)
@@ -281,6 +324,9 @@ func GetRandomName() string {
 }
 
 func AuditCollectionIsFullyConnected(collInfo CollectionInfo, db Database){
+	if db.dbType==Neo4j {
+		os.Exit(0)
+	}
 	subgraphCount := GetSubgraphCount(db, collInfo.Name)
 
 	if subgraphCount == 1 {
