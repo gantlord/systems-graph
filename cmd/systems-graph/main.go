@@ -13,8 +13,7 @@ import (
 func main() {
 	rand.New(rand.NewSource(0))
 
-    	config := sg_utils.ParseConfig()
-	db := sg_utils.GetDB(config)
+	db := sg_utils.GetDB()
 	sg_utils.DeleteDB(db)
 
 	IDsMap := make(map[string][]string)
@@ -24,7 +23,6 @@ func main() {
 		IDsMap[collInfo.Name] = sg_utils.CreateCollectionFromInfo(db, collInfo)
 	}
 
-	edgeColl := sg_utils.CreateEdgeCollection(db, "edges")
 	components := IDsMap["components"]
 	pods := IDsMap["pods"]
 	binaries := IDsMap["binaries"]
@@ -35,17 +33,17 @@ func main() {
 
 	for i := range components {
 		//TODO make the purpose tagging more realistic / sparse, invert edge direction
-		sg_utils.CreateEdge(db, "components", "purposes", components[i], purposes[rand.Intn(len(purposes))], "HAS_PURPOSE", edgeColl, false)
-		sg_utils.CreateEdge(db, "components", "binaries", components[i], binaries[rand.Intn(len(binaries))], "INSTANCE_OF", edgeColl, false)
+		sg_utils.CreateEdge(db, "components", "purposes", components[i], purposes[rand.Intn(len(purposes))], "HAS_PURPOSE")
+		sg_utils.CreateEdge(db, "components", "binaries", components[i], binaries[rand.Intn(len(binaries))], "INSTANCE_OF")
 		for {
 			if rand.Intn(100) < sg_utils.ConnectionPct {
 				j := rand.Intn(len(components))
 				if i == j {
 					continue
 				}
-				//sg_utils.CreateEdge(db, "components", "components", components[i], components[j], "DEPENDS_ON", edgeColl, false)
+				//sg_utils.CreateEdge(db, "components", "components", components[i], components[j], "DEPENDS_ON")
 			} else {
-				sg_utils.CreateEdge(db, "components", "pods", components[i], pods[rand.Intn(len(pods))], "RESIDES_ON", edgeColl, false)
+				sg_utils.CreateEdge(db, "components", "pods", components[i], pods[rand.Intn(len(pods))], "RESIDES_ON")
 				break
 			}
 		}
@@ -53,15 +51,15 @@ func main() {
 	}
 
 	for i := range firewallRules {
-		sg_utils.CreateEdge(db, "components", "firewallRules", components[rand.Intn(len(components))], firewallRules[i], "NEEDS_FW_RULE", edgeColl, false)
+		sg_utils.CreateEdge(db, "components", "firewallRules", components[rand.Intn(len(components))], firewallRules[i], "NEEDS_FW_RULE")
 	}
 
 	for i := range people {
-		sg_utils.CreateEdge(db, "binaries", "people", binaries[i], people[i], "MAINTAINED_BY", edgeColl, false)
+		sg_utils.CreateEdge(db, "binaries", "people", binaries[i], people[i], "MAINTAINED_BY")
 	}
 
 	for i := range nodes {
-		sg_utils.CreateEdge(db, "pods", "nodes", pods[i], nodes[i], "MAPPED_TO", edgeColl, false)
+		sg_utils.CreateEdge(db, "pods", "nodes", pods[i], nodes[i], "MAPPED_TO")
 	}
 
 	for _, collInfo := range sg_utils.Collections {
