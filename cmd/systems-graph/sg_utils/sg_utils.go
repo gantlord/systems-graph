@@ -213,6 +213,13 @@ func LogError(message string) {
 func Setup() {
 	log.SetFlags(log.Ltime)
 	now := time.Now()
+	if _, err := os.Stat("log"); os.IsNotExist(err) {
+		err = os.MkdirAll("log", 0755)
+		if err != nil {
+			log.Fatal(err)
+
+		}
+	}
 
 	timestamp := now.Format("2006-01-02_15-04-05")
 	filename := "log/" + timestamp + "-systems-graph.log"
