@@ -14,7 +14,7 @@ func main() {
 
 	IDsMap := make(map[string][]string)
 
- 	sg_utils.LogInfo("Creating Vertices...")
+	sg_utils.LogInfo("Creating Vertices...")
 	for _, labelInfo := range sg_utils.Labels {
 		IDsMap[labelInfo.Name] = sg_utils.CreateVerticesFromInfo(db, labelInfo)
 	}
@@ -55,8 +55,8 @@ func main() {
 	sg_utils.AuditAllVerticesConnectToLabel(db, "binaries", "people", "MAINTAINED_BY", len(binaries))
 	sg_utils.AuditAllVerticesConnectToLabel(db, "pods", "nodes", "POD_MAPPED_TO", len(pods))
 
-	sg_utils.AuditLimitsRespected(db, "components", "firewallRules", "-[:NEEDS_FW_RULE]->", "instanceLimit") 
-	sg_utils.AuditLimitsRespected(db, "components", "nodes", "-[:COMPONENT_MAPPED_TO]->()-[:POD_MAPPED_TO]->", "cores") 
+	sg_utils.AuditLimitsRespected(db, "components", "firewallRules", "-[:NEEDS_FW_RULE]->", "instanceLimit")
+	sg_utils.AuditLimitsRespected(db, "components", "nodes", "-[:COMPONENT_MAPPED_TO]->()-[:POD_MAPPED_TO]->", "cores")
 
 	if sg_utils.AuditsAllSucceeded {
 		sg_utils.LogInfo("All audits completed successfully!")
