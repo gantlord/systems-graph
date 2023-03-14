@@ -2,6 +2,7 @@ package sg_utils
 
 import (
 	"fmt"
+	"io"
 	"log"
 	neo_driver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"math/rand"
@@ -28,8 +29,8 @@ type LabelInfo struct {
 var Labels = []LabelInfo{
 	{"binaries", Medium, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("binary%d", i)} }},
 	{"firewallRules", Small, func(i int) map[string]interface{} {
-		instances := rand.Intn(Small)
-		return map[string]interface{}{"_key": fmt.Sprintf("fireWallRule%d", i), "instances": fmt.Sprintf("%d", instances)}
+		instanceLimit := rand.Intn(Small) + 1
+		return map[string]interface{}{"_key": fmt.Sprintf("fireWallRule%d", i), "instanceLimit": fmt.Sprintf("%d", instanceLimit)}
 	}},
 	{"pods", Medium, func(i int) map[string]interface{} {
 		return map[string]interface{}{"_key": fmt.Sprintf("pod%d", i)}
@@ -39,7 +40,7 @@ var Labels = []LabelInfo{
 	}},
 	{"purposes", Medium, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("purpose%d", i)} }},
 	{"nodes", Medium, func(i int) map[string]interface{} {
-		cores := rand.Intn(32)
+		cores := rand.Intn(32) + 26 //TODO this will break at some future point
 		return map[string]interface{}{"_key": fmt.Sprintf("node%d", i), "cores": fmt.Sprintf("%d", cores)}
 	}},
 	{"people", Medium, func(i int) map[string]interface{} {
@@ -139,9 +140,33 @@ func queryIntResult(db Database, queryString string, resultString string) int {
 	return int(count.(int64))
 }
 
-func AuditAllVerticesConnectToLabel(db Database, sourceLabelName string, targetLabelName string, relationshipName string, sourceLabelLength int) {
+func AuditLimitsRespected(db Database, sourceLabel string, targetLabel string, relationship string, limit string){
 
-	query := fmt.Sprintf("match (x:%s)-[:%s]->(y:%s) return count(x)", sourceLabelName, relationshipName, targetLabelName)
+	query := fmt.Sprintf(
+		"match (s:%s)%s(d:%s) with d, count(s) as instanceCount, toInteger(d.%s) as limit where instanceCount > limit return count(d)",
+		sourceLabel, relationship, targetLabel, limit)
+
+	result := queryIntResult(db, query, "count(d)")
+	resString := "FAILURE"
+
+	if result == 0 {
+		resString = "SUCCESS"
+	} else {
+		AuditsAllSucceeded = false
+	}
+
+	LogInfo(
+		fmt.Sprintf(
+			"%s: %d vertices in source label %s have exceeded %s limit %s in target label %s", 
+			resString, result, sourceLabel, relationship, limit, targetLabel))
+
+}
+
+func AuditAllVerticesConnectToLabel(db Database, sourceLabel string, targetLabel string, relationship string, sourceLabelLength int) {
+
+	query := fmt.Sprintf(
+		"match (x:%s)-[:%s]->(y:%s) return count(x)", 
+		sourceLabel, relationship, targetLabel)
 
 	result := queryIntResult(db, query, "count(x)")
 
@@ -152,11 +177,14 @@ func AuditAllVerticesConnectToLabel(db Database, sourceLabelName string, targetL
 		AuditsAllSucceeded = false
 	}
 
-	LogInfo(fmt.Sprintf("%s: %d/%d vertices in source label %s have an outgoing edge to label %s\n", resString, result, sourceLabelLength, sourceLabelName, targetLabelName))
+	LogInfo(
+		fmt.Sprintf(
+			"%s: %d/%d vertices in source label %s have an outgoing edge to label %s", 
+			resString, result, sourceLabelLength, sourceLabel, targetLabel))
 }
-func AuditAllVerticesConnectFromLabel(db Database, targetLabelName string, sourceLabelName string, relationshipName string, targetLabelLength int) {
+func AuditAllVerticesConnectFromLabel(db Database, targetLabel string, sourceLabel string, relationship string, targetLabelLength int) {
 
-	query := fmt.Sprintf("match (x:%s)<-[:%s]-(y:%s) return count(x)", targetLabelName, relationshipName, sourceLabelName)
+	query := fmt.Sprintf("match (x:%s)<-[:%s]-(y:%s) return count(x)", targetLabel, relationship, sourceLabel)
 
 	result := queryIntResult(db, query, "count(x)")
 
@@ -167,7 +195,7 @@ func AuditAllVerticesConnectFromLabel(db Database, targetLabelName string, sourc
 		AuditsAllSucceeded = false
 	}
 
-	LogInfo(fmt.Sprintf("%s: %d/%d vertices in target label %s have an incoming edge from label %s\n", resString, result, targetLabelLength, targetLabelName, sourceLabelName))
+	LogInfo(fmt.Sprintf("%s: %d/%d vertices in target label %s have an incoming edge from label %s", resString, result, targetLabelLength, targetLabel, sourceLabel))
 }
 
 func LogInfo(message string){
@@ -187,13 +215,14 @@ func Setup(){
     	now := time.Now()
 
     	timestamp := now.Format("2006-01-02_15-04-05")
-	filename := timestamp + "-systems-graph.log"
+	filename := "log/"+timestamp + "-systems-graph.log"
 
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
     	if err != nil {
         	log.Fatal(err)
-    	}
-    	log.SetOutput(file)
+    	
+	}
+  	log.SetOutput(io.MultiWriter(os.Stdout, file))
 
 
 	seed := int64(0) 

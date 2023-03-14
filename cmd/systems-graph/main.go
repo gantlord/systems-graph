@@ -27,10 +27,6 @@ func main() {
 	people := IDsMap["people"]
 	nodes := IDsMap["nodes"]
 
-	/*TODO Audits:
-	6. firewallRules don't have too many instances
-	7. components don't consume too many cores on node */
-
 	sg_utils.LogInfo("Creating Edges...")
 
 	for i := range components {
@@ -59,10 +55,13 @@ func main() {
 	sg_utils.AuditAllVerticesConnectToLabel(db, "binaries", "people", "MAINTAINED_BY", len(binaries))
 	sg_utils.AuditAllVerticesConnectToLabel(db, "pods", "nodes", "POD_MAPPED_TO", len(pods))
 
+	sg_utils.AuditLimitsRespected(db, "components", "firewallRules", "-[:NEEDS_FW_RULE]->", "instanceLimit") 
+	sg_utils.AuditLimitsRespected(db, "components", "nodes", "-[:COMPONENT_MAPPED_TO]->()-[:POD_MAPPED_TO]->", "cores") 
+
 	if sg_utils.AuditsAllSucceeded {
-		sg_utils.LogInfo("\nAll audits completed successfully!")
+		sg_utils.LogInfo("All audits completed successfully!")
 	} else {
-		sg_utils.LogError("\nAudits failed")
+		sg_utils.LogError("Audits failed")
 	}
 
 }
