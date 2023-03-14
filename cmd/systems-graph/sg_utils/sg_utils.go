@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"strings"
 	"math/rand"
-	"os"
 	"systems-graph/neo_utils"
 	neo_driver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 
 )
 
-const Small = 1
+const Small = 10
 const Medium = 10  * Small
 const Large = 10 * Medium
 const ConnectionPct = 50
@@ -18,13 +17,13 @@ const ConnectionPct = 50
 var AuditsAllSucceeded = true
 var DefaultMaxDepth = 20
 
-type CollectionInfo struct {
+type LabelInfo struct {
 	Name     string
 	Size     int
 	DocGenFn func(i int) map[string]interface{}
 }
 
-var Collections = []CollectionInfo{
+var Labels = []LabelInfo{
 	{"binaries", Medium, func(i int) map[string]interface{} { return map[string]interface{}{"_key": fmt.Sprintf("binary%d", i)} }},
 	{"firewallRules", Small, func(i int) map[string]interface{} { 
 		instances := rand.Intn(Small)
@@ -102,12 +101,12 @@ func DeleteDB(db Database) {
 	}
 }
 
-func CreateCollectionFromInfo(db Database, collInfo CollectionInfo) []string {
-	docIDs := make([]string, collInfo.Size)
+func CreateVerticesFromInfo(db Database, labelInfo LabelInfo) []string {
+	docIDs := make([]string, labelInfo.Size)
 
-	for i := 0; i < collInfo.Size; i++ {
-		doc := collInfo.DocGenFn(i)
-			query := fmt.Sprintf("MERGE (n:%s %s)", collInfo.Name, stringFromDocFn(doc))
+	for i := 0; i < labelInfo.Size; i++ {
+		doc := labelInfo.DocGenFn(i)
+			query := fmt.Sprintf("MERGE (n:%s %s)", labelInfo.Name, stringFromDocFn(doc))
 
 
 			    //fmt.Printf("%s\n", query)
@@ -132,94 +131,53 @@ func GetRandomName() string {
 	return fmt.Sprintf("%s%s", firstName, lastName)
 }
 
-func AuditCollectionIsFullyConnected(collInfo CollectionInfo, db Database){
-	os.Exit(0)
-	subgraphCount := GetSubgraphCount(db, collInfo.Name)
 
-	if subgraphCount == 1 {
-            fmt.Printf("SUCCESS: collection %s is fully connected for %d vertices\n", collInfo.Name, collInfo.Size)
-	} else {
-	    fmt.Printf("FAILURE: collection %s has %d subgraphs for %d vertices\n", collInfo.Name, subgraphCount, collInfo.Size)
-	    AuditsAllSucceeded = false
-	}
-}
-
-func GetSubgraphCount(db Database, collectionName string) int {
-	query := fmt.Sprintf("let finalArray=(for x in %s let subResult=(for v in 0..%d any x edges options {\"uniqueVertices\":\"global\", \"order\":\"bfs\", \"vertexCollections\":\"%s\"} collect keys=v._key return distinct keys) return distinct subResult) return length(finalArray)", collectionName, DefaultMaxDepth, collectionName)
-	return queryIntResult(db, query)
-}
-
-func GetSubgraphConnectionsToTargetCollectionCount(db Database, sourceCollectionName string, targetCollectionName string) int {
-   //TODO may be broken, no max depth 
-	query := fmt.Sprintf("let pArray=(for x in %s let countParts=(for v in outbound x edges filter is_same_collection(\"%s\", v._id) collect with count into cCount let part=cCount==0? 0:1 return part) return first(countParts)) return sum(flatten(pArray))", sourceCollectionName, targetCollectionName)
-	result := queryIntResult(db, query)
-	
-	return result
-}
-
-func AuditCollectionSubgraphsConnectToCollection(db Database, sourceCollectionName string, targetCollectionName string) {
-    
-    subgraphConnectionsCount := GetSubgraphConnectionsToTargetCollectionCount(db, sourceCollectionName, targetCollectionName)
-    subgraphCount := GetSubgraphCount(db, sourceCollectionName)
-
-    if subgraphConnectionsCount!=subgraphCount {
-        fmt.Printf("FAILURE: %d/%d subgraphs in source collection %s have an outgoing edge to collection %s\n", subgraphConnectionsCount, subgraphCount, sourceCollectionName, targetCollectionName) 
-	AuditsAllSucceeded = false
-    } else {
-        fmt.Printf("SUCCESS: %d/%d subgraphs in source collection %s have an outgoing edge to target collection %s\n", subgraphConnectionsCount, subgraphCount, sourceCollectionName, targetCollectionName) 
+func queryIntResult(db Database, queryString string, resultString string) int {
+	//TODO apparently Run isn't as proper as ExecuteWrite so should use that down the track
+    result,err := db.neoSession.Run(queryString, nil)
+    if err != nil {
+	    //TODO need autoformatter
+	    panic(err)
     }
-}
-
-func queryIntResult(db Database, queryString string) int {
-    /*cursor, err := db.arangoDatabase.Query(context.Background(), queryString, nil)
+    record, err := result.Single()
     if err != nil {
         panic(err)
     }
-    defer cursor.Close()
-    var result int
-    _, err = cursor.ReadDocument(context.Background(), &result)
-    if arango_driver.IsNoMoreDocuments(err) {
-    } else if err != nil {
-	panic(err)
+    count, exists := record.Get(resultString)
+    if !exists {
+        panic(fmt.Sprintf("%s doesn't exist", resultString))
     }
-    return result*/
-    return 0
+    return int(count.(int64))
 }
 
-func AuditAllVerticesConnectToCollection(db Database, sourceCollectionName string, targetCollectionName string, sourceCollectionLength int) {
+func AuditAllVerticesConnectToLabel(db Database, sourceLabelName string, targetLabelName string, relationshipName string, sourceLabelLength int) {
 
+	query := fmt.Sprintf("match (x:%s)-[:%s]->(y:%s) return count(x)", sourceLabelName, relationshipName, targetLabelName) 
 
-    query := fmt.Sprintf("let pArray=(for x in %s let countParts=(for v in outbound x edges filter is_same_collection(\"%s\", v._id) collect with count into cCount let part=cCount==0? 0:1 return part) return first(countParts)) return sum(flatten(pArray))", sourceCollectionName, targetCollectionName)
-    
-//TODO may be broken, no max depth
-
-    result := queryIntResult(db, query)
+    result := queryIntResult(db, query, "count(x)")
    
     resString := "FAILURE"
-    if result==sourceCollectionLength{
+    if result==sourceLabelLength{
         resString = "SUCCESS"
     } else {
 	AuditsAllSucceeded = false
     }
 
-    fmt.Printf("%s: %d/%d vertices in source collection %s have an outgoing edge to collection %s\n", resString, result, sourceCollectionLength, sourceCollectionName, targetCollectionName) 
+    fmt.Printf("%s: %d/%d vertices in source label %s have an outgoing edge to label %s\n", resString, result, sourceLabelLength, sourceLabelName, targetLabelName) 
 }
+func AuditAllVerticesConnectFromLabel(db Database, targetLabelName string, sourceLabelName string, relationshipName string, targetLabelLength int) {
 
+	query := fmt.Sprintf("match (x:%s)<-[:%s]-(y:%s) return count(x)", targetLabelName, relationshipName, sourceLabelName) 
 
-func AuditComponentsConnectToEitherCollection(db Database, sourceCollectionName string, targetCollectionName1 string, targetCollectionName2 string, sourceCollectionLength int) {
-
-//TODO no max depth
-
-    query := fmt.Sprintf("let pArray=(for x in %s let countParts=(for v in outbound x edges filter is_same_collection(\"%s\", v._id) || is_same_collection(\"%s\", v._id) collect with count into cCount let part=cCount==0? 0:1 return part) return first(countParts)) return sum(flatten(pArray))", sourceCollectionName, targetCollectionName1, targetCollectionName2)
-    result := queryIntResult(db, query)
-
+    result := queryIntResult(db, query, "count(x)")
+   
     resString := "FAILURE"
-    if result==sourceCollectionLength{
+    if result==targetLabelLength{
         resString = "SUCCESS"
     } else {
 	AuditsAllSucceeded = false
     }
 
-    fmt.Printf("%s: %d/%d vertices in source collection %s have an outgoing edge to collection %s or collection %s\n", resString, result, sourceCollectionLength, sourceCollectionName, targetCollectionName1, targetCollectionName2) 
-
+    fmt.Printf("%s: %d/%d vertices in target label %s have an incoming edge from label %s\n", resString, result, targetLabelLength, targetLabelName, sourceLabelName) 
 }
+

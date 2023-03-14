@@ -18,9 +18,9 @@ func main() {
 
 	IDsMap := make(map[string][]string)
 
-
-	for _, collInfo := range sg_utils.Collections {
-		IDsMap[collInfo.Name] = sg_utils.CreateCollectionFromInfo(db, collInfo)
+	fmt.Println("Creating Vertices...")
+	for _, labelInfo := range sg_utils.Labels {
+		IDsMap[labelInfo.Name] = sg_utils.CreateVerticesFromInfo(db, labelInfo)
 	}
 
 	components := IDsMap["components"]
@@ -31,44 +31,37 @@ func main() {
 	people := IDsMap["people"]
 	nodes := IDsMap["nodes"]
 
+	/*TODO Audits:
+	6. firewallRules don't have too many instances
+	7. components don't consume too many cores on node */
+
+	fmt.Println("Creating Edges...")
+
 	for i := range components {
-		//TODO make the purpose tagging more realistic / sparse, invert edge direction
 		sg_utils.CreateEdge(db, "components", "purposes", components[i], purposes[rand.Intn(len(purposes))], "HAS_PURPOSE")
 		sg_utils.CreateEdge(db, "components", "binaries", components[i], binaries[rand.Intn(len(binaries))], "INSTANCE_OF")
-		for {
-			if rand.Intn(100) < sg_utils.ConnectionPct {
-				j := rand.Intn(len(components))
-				if i == j {
-					continue
-				}
-				//sg_utils.CreateEdge(db, "components", "components", components[i], components[j], "DEPENDS_ON")
-			} else {
-				sg_utils.CreateEdge(db, "components", "pods", components[i], pods[rand.Intn(len(pods))], "RESIDES_ON")
-				break
-			}
-		}
-
+		sg_utils.CreateEdge(db, "components", "pods", components[i], pods[rand.Intn(len(pods))], "COMPONENT_MAPPED_TO")
 	}
 
 	for i := range firewallRules {
 		sg_utils.CreateEdge(db, "components", "firewallRules", components[rand.Intn(len(components))], firewallRules[i], "NEEDS_FW_RULE")
 	}
 
-	for i := range people {
-		sg_utils.CreateEdge(db, "binaries", "people", binaries[i], people[i], "MAINTAINED_BY")
+	for i := range binaries {
+		sg_utils.CreateEdge(db, "binaries", "people", binaries[i], people[rand.Intn(len(binaries))], "MAINTAINED_BY")
 	}
 
-	for i := range nodes {
-		sg_utils.CreateEdge(db, "pods", "nodes", pods[i], nodes[i], "MAPPED_TO")
+	for i := range pods {
+		sg_utils.CreateEdge(db, "pods", "nodes", pods[i], nodes[rand.Intn(len(pods))], "POD_MAPPED_TO")
 	}
 
-	for _, collInfo := range sg_utils.Collections {
-	    sg_utils.AuditCollectionIsFullyConnected(collInfo, db)
-	}
-
-	sg_utils.AuditComponentsConnectToEitherCollection(db, "components", "components", "pods", len(components))
-	sg_utils.AuditAllVerticesConnectToCollection(db, "components", "pods", len(components))
-	sg_utils.AuditCollectionSubgraphsConnectToCollection(db, "components", "purposes")
+	fmt.Println("Auditing Relationships...")
+	sg_utils.AuditAllVerticesConnectToLabel(db, "components", "pods", "COMPONENT_MAPPED_TO", len(components))
+	sg_utils.AuditAllVerticesConnectToLabel(db, "components", "purposes", "HAS_PURPOSE", len(components))
+	sg_utils.AuditAllVerticesConnectToLabel(db, "components", "binaries", "INSTANCE_OF", len(components))
+	sg_utils.AuditAllVerticesConnectFromLabel(db, "firewallRules", "components", "NEEDS_FW_RULE", len(firewallRules))
+	sg_utils.AuditAllVerticesConnectToLabel(db, "binaries", "people", "MAINTAINED_BY", len(binaries))
+	sg_utils.AuditAllVerticesConnectToLabel(db, "pods", "nodes", "POD_MAPPED_TO", len(pods))
 
 	if (sg_utils.AuditsAllSucceeded){
 	    fmt.Println("\nAll audits completed successfully!")
@@ -79,4 +72,3 @@ func main() {
  	}
 
 }
-
