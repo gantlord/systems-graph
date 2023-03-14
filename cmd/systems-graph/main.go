@@ -1,14 +1,11 @@
 package main
 
 import (
-	"math/rand"
-	"systems-graph/sg_utils"
 	"fmt"
+	"math/rand"
 	"os"
+	"systems-graph/sg_utils"
 )
-
-
-
 
 func main() {
 	rand.New(rand.NewSource(0))
@@ -63,12 +60,12 @@ func main() {
 	sg_utils.AuditAllVerticesConnectToLabel(db, "binaries", "people", "MAINTAINED_BY", len(binaries))
 	sg_utils.AuditAllVerticesConnectToLabel(db, "pods", "nodes", "POD_MAPPED_TO", len(pods))
 
-	if (sg_utils.AuditsAllSucceeded){
-	    fmt.Println("\nAll audits completed successfully!")
-	    os.Exit(0)
+	if sg_utils.AuditsAllSucceeded {
+		fmt.Println("\nAll audits completed successfully!")
+		os.Exit(0)
 	} else {
-	    fmt.Println("\nAudits failed")
-	    os.Exit(1)
- 	}
+		fmt.Println("\nAudits failed")
+		os.Exit(1)
+	}
 
 }

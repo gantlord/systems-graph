@@ -13,7 +13,6 @@ func CreateDriver() neo4j.Driver {
 }
 
 func GetDB(driver neo4j.Driver) neo4j.Session {
-	neo4jSession:= driver.NewSession(neo4j.SessionConfig{})
+	neo4jSession := driver.NewSession(neo4j.SessionConfig{})
 	return neo4jSession
 }
-
