@@ -45,22 +45,19 @@ var Labels = []LabelInfo{
 }
 
 func stringFromDocFn(doc map[string]interface{}) string {
-	var builder strings.Builder
-	builder.WriteString("{ ")
+        var builder strings.Builder
+        builder.WriteString("{ ")
 
-	first := true
-	for key, value := range doc {
-		//TODO find neater way to do this
-		if !first {
-			builder.WriteString(fmt.Sprintf(", "))
-		}
-		first = false
-		builder.WriteString(fmt.Sprintf("%s:\"%s\"", key, value))
-	}
+        separator := ""
+        for key, value := range doc {
+                builder.WriteString(fmt.Sprintf("%s%s:\"%s\"", separator, key, value))
+                separator = ", "
+        }
 
-	builder.WriteString("}")
-	return builder.String()
+        builder.WriteString(" }")
+        return builder.String()
 }
+
 
 var firstNames = []string{"Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace", "Heidi", "Ivan", "Julia", "Kevin", "Linda", "Mallory", "Nancy", "Oscar", "Peggy", "Quentin", "Randy", "Sybil", "Trent", "Ursula", "Victor", "Wendy", "Xander", "Yvonne", "Zelda"}
 var lastNames = []string{"Smith", "Johnson", "Brown", "Davis", "Wilson", "Kim", "Schmidt", "Petrov", "Rodriguez", "Garcia", "Gonzalez", "Martinez", "Hernandez", "Lopez", "Perez", "Jackson", "Taylor", "Lee", "Nguyen", "Chen", "Wang", "Singh", "Kim", "Gupta", "Kumar"}
