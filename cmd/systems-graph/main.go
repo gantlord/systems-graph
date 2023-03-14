@@ -2,26 +2,23 @@ package main
 
 import (
 	"math/rand"
-	"systems-graph/arango_utils"
-	"fmt"
-	"os"
+	"systems-graph/sg_utils"
 )
 
-
 func main() {
-	rand.New(rand.NewSource(0))
 
-	conn := arango_utils.CreateConnection()
-	client := arango_utils.CreateClient(conn)
-	db := arango_utils.GetDB(client)
+	sg_utils.Setup()
+
+	db := sg_utils.GetDB()
+	sg_utils.DeleteDB(db)
 
 	IDsMap := make(map[string][]string)
 
-	for _, collInfo := range arango_utils.Collections {
-		IDsMap[collInfo.Name] = arango_utils.CreateCollectionFromInfo(db, collInfo)
+	sg_utils.LogInfo("Creating Vertices...")
+	for _, labelInfo := range sg_utils.Labels {
+		IDsMap[labelInfo.Name] = sg_utils.CreateVerticesFromInfo(db, labelInfo)
 	}
 
-	edgeColl := arango_utils.CreateEdgeCollection(db, "edges")
 	components := IDsMap["components"]
 	pods := IDsMap["pods"]
 	binaries := IDsMap["binaries"]
@@ -30,52 +27,41 @@ func main() {
 	people := IDsMap["people"]
 	nodes := IDsMap["nodes"]
 
-	for i := range components {
-		//TODO make the purpose tagging more realistic / sparse, invert edge direction
-		arango_utils.CreateEdge(db, components[i], purposes[rand.Intn(len(purposes))], edgeColl, false)
-		arango_utils.CreateEdge(db, components[i], binaries[rand.Intn(len(binaries))], edgeColl, false)
-		for {
-			if rand.Intn(100) < arango_utils.ConnectionPct {
-				j := rand.Intn(len(components))
-				if i == j {
-					continue
-				}
-				arango_utils.CreateEdge(db, components[i], components[j], edgeColl, false)
-			} else {
-				arango_utils.CreateEdge(db, components[i], pods[rand.Intn(len(pods))], edgeColl, false)
-				break
-			}
-		}
+	sg_utils.LogInfo("Creating Edges...")
 
+	for i := range components {
+		sg_utils.CreateEdge(db, "components", "purposes", components[i], purposes[rand.Intn(len(purposes))], "HAS_PURPOSE")
+		sg_utils.CreateEdge(db, "components", "binaries", components[i], binaries[rand.Intn(len(binaries))], "INSTANCE_OF")
+		sg_utils.CreateEdge(db, "components", "pods", components[i], pods[rand.Intn(len(pods))], "COMPONENT_MAPPED_TO")
 	}
 
 	for i := range firewallRules {
-		arango_utils.CreateEdge(db, components[rand.Intn(len(components))], firewallRules[i], edgeColl, false)
+		sg_utils.CreateEdge(db, "components", "firewallRules", components[rand.Intn(len(components))], firewallRules[i], "NEEDS_FW_RULE")
 	}
 
-	for i := range people {
-		arango_utils.CreateEdge(db, binaries[i], people[i], edgeColl, false)
+	for i := range binaries {
+		sg_utils.CreateEdge(db, "binaries", "people", binaries[i], people[rand.Intn(len(binaries))], "MAINTAINED_BY")
 	}
 
-	for i := range nodes {
-		arango_utils.CreateEdge(db, pods[i], nodes[i], edgeColl, false)
+	for i := range pods {
+		sg_utils.CreateEdge(db, "pods", "nodes", pods[i], nodes[rand.Intn(len(pods))], "POD_MAPPED_TO")
 	}
 
-	for _, collInfo := range arango_utils.Collections {
-	    arango_utils.AuditCollectionIsFullyConnected(collInfo, db)
-	}
+	sg_utils.LogInfo("Auditing Relationships...")
+	sg_utils.AuditAllVerticesConnectToLabel(db, "components", "pods", "COMPONENT_MAPPED_TO", len(components))
+	sg_utils.AuditAllVerticesConnectToLabel(db, "components", "purposes", "HAS_PURPOSE", len(components))
+	sg_utils.AuditAllVerticesConnectToLabel(db, "components", "binaries", "INSTANCE_OF", len(components))
+	sg_utils.AuditAllVerticesConnectFromLabel(db, "firewallRules", "components", "NEEDS_FW_RULE", len(firewallRules))
+	sg_utils.AuditAllVerticesConnectToLabel(db, "binaries", "people", "MAINTAINED_BY", len(binaries))
+	sg_utils.AuditAllVerticesConnectToLabel(db, "pods", "nodes", "POD_MAPPED_TO", len(pods))
 
-	arango_utils.AuditComponentsConnectToEitherCollection(db, "components", "components", "pods", len(components))
-	arango_utils.AuditAllVerticesConnectToCollection(db, "components", "pods", len(components))
-	arango_utils.AuditCollectionSubgraphsConnectToCollection(db, "components", "purposes")
+	sg_utils.AuditLimitsRespected(db, "components", "firewallRules", "-[:NEEDS_FW_RULE]->", "instanceLimit")
+	sg_utils.AuditLimitsRespected(db, "components", "nodes", "-[:COMPONENT_MAPPED_TO]->()-[:POD_MAPPED_TO]->", "cores")
 
-	if (arango_utils.AuditsAllSucceeded){
-	    fmt.Println("\nAll audits completed successfully!")
-	    os.Exit(0)
+	if sg_utils.AuditsAllSucceeded {
+		sg_utils.LogInfo("All audits completed successfully!")
 	} else {
-	    fmt.Println("\nAudits failed")
-	    os.Exit(1)
- 	}
+		sg_utils.LogError("Audits failed")
+	}
 
 }
-
