@@ -2,3 +2,4 @@ go.mod
 go.sum
 cmd/systems-graph/systems-graph
 cmd/systems-graph/__debug_bin
+cmd/systems-graph/*.log

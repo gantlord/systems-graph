@@ -2,10 +2,13 @@ package sg_utils
 
 import (
 	"fmt"
+	"log"
 	neo_driver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"math/rand"
+	"os"
 	"strings"
 	"systems-graph/neo_utils"
+	"time"
 )
 
 const Small = 10
@@ -78,10 +81,9 @@ func CreateEdge(db Database, fS string, tS string, from string, to string, edgeL
 	//TODO apparently Run isn't as proper as ExecuteWrite so should use that down the track
 	result, err := db.neoSession.Run(query, nil)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	result.Consume()
-	//fmt.Printf("%s\n", query)
 }
 
 func DeleteDB(db Database) {
@@ -90,7 +92,7 @@ func DeleteDB(db Database) {
 		return tx.Run(cypher, nil)
 	})
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 }
 
@@ -101,12 +103,10 @@ func CreateVerticesFromInfo(db Database, labelInfo LabelInfo) []string {
 		doc := labelInfo.DocGenFn(i)
 		query := fmt.Sprintf("MERGE (n:%s %s)", labelInfo.Name, stringFromDocFn(doc))
 
-		//fmt.Printf("%s\n", query)
-
 		// TODO apparently Run isn't as proper as ExecuteWrite so should use that down the track
 		result, err := db.neoSession.Run(query, nil)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		result.Consume()
 
@@ -126,15 +126,15 @@ func queryIntResult(db Database, queryString string, resultString string) int {
 	//TODO apparently Run isn't as proper as ExecuteWrite so should use that down the track
 	result, err := db.neoSession.Run(queryString, nil)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	record, err := result.Single()
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	count, exists := record.Get(resultString)
 	if !exists {
-		panic(fmt.Sprintf("%s doesn't exist", resultString))
+		log.Fatal(fmt.Sprintf("%s doesn't exist", resultString))
 	}
 	return int(count.(int64))
 }
@@ -152,7 +152,7 @@ func AuditAllVerticesConnectToLabel(db Database, sourceLabelName string, targetL
 		AuditsAllSucceeded = false
 	}
 
-	fmt.Printf("%s: %d/%d vertices in source label %s have an outgoing edge to label %s\n", resString, result, sourceLabelLength, sourceLabelName, targetLabelName)
+	LogInfo(fmt.Sprintf("%s: %d/%d vertices in source label %s have an outgoing edge to label %s\n", resString, result, sourceLabelLength, sourceLabelName, targetLabelName))
 }
 func AuditAllVerticesConnectFromLabel(db Database, targetLabelName string, sourceLabelName string, relationshipName string, targetLabelLength int) {
 
@@ -167,5 +167,37 @@ func AuditAllVerticesConnectFromLabel(db Database, targetLabelName string, sourc
 		AuditsAllSucceeded = false
 	}
 
-	fmt.Printf("%s: %d/%d vertices in target label %s have an incoming edge from label %s\n", resString, result, targetLabelLength, targetLabelName, sourceLabelName)
+	LogInfo(fmt.Sprintf("%s: %d/%d vertices in target label %s have an incoming edge from label %s\n", resString, result, targetLabelLength, targetLabelName, sourceLabelName))
+}
+
+func LogInfo(message string){
+	log.Printf("INFO: %s\n", message)
+}
+
+func LogWarning(message string){
+	log.Printf("WARNING: %s\n", message)
+}
+
+func LogError(message string){
+	log.Printf("ERROR: %s\n", message)
+}
+
+func Setup(){
+	log.SetFlags(log.Ltime)
+    	now := time.Now()
+
+    	timestamp := now.Format("2006-01-02_15-04-05")
+	filename := timestamp + "-systems-graph.log"
+
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+    	if err != nil {
+        	log.Fatal(err)
+    	}
+    	log.SetOutput(file)
+
+
+	seed := int64(0) 
+	rand.New(rand.NewSource(seed))
+	LogInfo(fmt.Sprintf("prng seed is %d", seed))
+
 }

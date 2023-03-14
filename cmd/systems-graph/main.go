@@ -1,21 +1,20 @@
 package main
 
 import (
-	"fmt"
 	"math/rand"
-	"os"
 	"systems-graph/sg_utils"
 )
 
 func main() {
-	rand.New(rand.NewSource(0))
+
+	sg_utils.Setup()
 
 	db := sg_utils.GetDB()
 	sg_utils.DeleteDB(db)
 
 	IDsMap := make(map[string][]string)
 
-	fmt.Println("Creating Vertices...")
+ 	sg_utils.LogInfo("Creating Vertices...")
 	for _, labelInfo := range sg_utils.Labels {
 		IDsMap[labelInfo.Name] = sg_utils.CreateVerticesFromInfo(db, labelInfo)
 	}
@@ -32,7 +31,7 @@ func main() {
 	6. firewallRules don't have too many instances
 	7. components don't consume too many cores on node */
 
-	fmt.Println("Creating Edges...")
+	sg_utils.LogInfo("Creating Edges...")
 
 	for i := range components {
 		sg_utils.CreateEdge(db, "components", "purposes", components[i], purposes[rand.Intn(len(purposes))], "HAS_PURPOSE")
@@ -52,7 +51,7 @@ func main() {
 		sg_utils.CreateEdge(db, "pods", "nodes", pods[i], nodes[rand.Intn(len(pods))], "POD_MAPPED_TO")
 	}
 
-	fmt.Println("Auditing Relationships...")
+	sg_utils.LogInfo("Auditing Relationships...")
 	sg_utils.AuditAllVerticesConnectToLabel(db, "components", "pods", "COMPONENT_MAPPED_TO", len(components))
 	sg_utils.AuditAllVerticesConnectToLabel(db, "components", "purposes", "HAS_PURPOSE", len(components))
 	sg_utils.AuditAllVerticesConnectToLabel(db, "components", "binaries", "INSTANCE_OF", len(components))
@@ -61,11 +60,9 @@ func main() {
 	sg_utils.AuditAllVerticesConnectToLabel(db, "pods", "nodes", "POD_MAPPED_TO", len(pods))
 
 	if sg_utils.AuditsAllSucceeded {
-		fmt.Println("\nAll audits completed successfully!")
-		os.Exit(0)
+		sg_utils.LogInfo("\nAll audits completed successfully!")
 	} else {
-		fmt.Println("\nAudits failed")
-		os.Exit(1)
+		sg_utils.LogError("\nAudits failed")
 	}
 
 }
